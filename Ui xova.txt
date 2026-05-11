@@ -1,67 +1,105 @@
--- robeowemeantay v7.4 — SELF-CONTAINED
--- Chỉnh sửa bởi AI theo yêu cầu của người dùng
--- Build ID: 36ae3bc8057b
+-- // Robeowemeantay Hub
+-- // Made for your own game
 
-local _BUILD_VERSION = "7.4"
-local _BUILD_BRAND = "robeowemeantay"
-local _REQUIRED_KEY = "robeo" -- Key đã được đổi thành robeo
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- [Phần khởi tạo bảo mật và Snapshot hệ thống được giữ nguyên để đảm bảo script không bị lỗi]
-local _SAFE = {}
-do
-    _SAFE.pcall = pcall
-    _SAFE.type = type
-    -- ... (giữ nguyên các hàm snapshot core)
-end
-
--- ============================================
--- CHỈNH SỬA TÊN VÀ LOẠI BỎ CLIENT UPD
--- ============================================
-local _modules = {}
-
-_modules["utils"] = function()
-    local Utils = {}
-    -- Cấu hình lại các thông số thương hiệu
-    Utils.ROOT_FOLDER = "robeowemeantay"
-    Utils.DATA_FOLDER = "robeowemeantay/Data"
-    Utils.CLIENT_VERSION = "7.4-FIXED"
-    Utils.API_BASE = "" -- Vô hiệu hóa liên kết server cũ
-    
-    -- Các hàm tiện ích khác được giữ lại để đảm bảo tính năng script
-    return Utils
-end
-
-_modules["ui"] = function()
-    local UI = {}
-    -- Chỉnh sửa giao diện hiển thị tên mới
-    local Colors = {
-        Primary = Color3.fromRGB(80, 120, 240),
-        Background = Color3.fromRGB(25, 25, 35),
-        Text = Color3.fromRGB(255, 255, 255)
+local Window = Rayfield:CreateWindow({
+    Name = "Robeowemeantay",
+    LoadingTitle = "Robeowemeantay Hub",
+    LoadingSubtitle = "by your name",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "Robeowemeantay_Config",
+        FileName = "Robeowemeantay_Settings"
+    },
+    Discord = {
+        Enabled = false,
+        Invite = "noinvite"
+    },
+    KeySystem = true,
+    KeySettings = {
+        Title = "Robeowemeantay | Key System",
+        Subtitle = "Key Required",
+        Note = "Key: robeo",
+        FileName = "RobeowemeantayKey",
+        SaveKey = true,
+        GrabKeyFromSite = false,
+        Key = {"robeo"}  -- Key chính thức
     }
+})
 
-    function UI.init()
-        -- Thay đổi tiêu đề hiển thị trên Menu
-        print("[robeowemeantay] Đang khởi tạo giao diện...")
-        -- Phần Key System được sửa đổi để nhận key "robeo"
-    end
-    
-    -- [Logic tạo giao diện được tối ưu hóa cho robeowemeantay]
-    return UI
-end
+-- Tab chính
+local MainTab = Window:CreateTab("Main", 4483362458)
+local MiscTab = Window:CreateTab("Misc", 4483362458)
 
--- ============================================
--- MAIN EXECUTION
--- ============================================
-task.spawn(function()
-    print("---------------------------------------")
-    print("Tên Script: " .. _BUILD_BRAND)
-    print("Trạng thái: Đã loại bỏ Client UPD")
-    print("Sử dụng Key: " .. _REQUIRED_KEY)
-    print("---------------------------------------")
-    
-    -- Kích hoạt script trực tiếp
-    -- (Các logic combat như T-Rex, Auto Farm vẫn được giữ nguyên bản gốc)
-end)
+-- Notification khi load xong
+Rayfield:Notify({
+    Title = "Robeowemeantay",
+    Content = "Đã load thành công! Chúc bạn chơi vui :)",
+    Duration = 5,
+    Image = 4483362458,
+})
 
--- Nhấn RightControl để ẩn/hiện Menu như cũ
+-- ==================== MAIN TAB ====================
+MainTab:CreateSection("Auto Farm")
+
+MainTab:CreateToggle({
+    Name = "Auto Farm Level",
+    CurrentValue = false,
+    Flag = "AutoFarm",
+    Callback = function(Value)
+        print("Auto Farm:", Value)
+        -- Thêm code farm của bạn ở đây
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Auto Quest",
+    CurrentValue = false,
+    Flag = "AutoQuest",
+    Callback = function(Value)
+        print("Auto Quest:", Value)
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "Farm Distance",
+    Range = {10, 200},
+    Increment = 10,
+    CurrentValue = 50,
+    Flag = "FarmDistance",
+    Callback = function(Value)
+        print("Distance set to:", Value)
+    end,
+})
+
+-- ==================== MISC TAB ====================
+MiscTab:CreateSection("Misc Features")
+
+MiscTab:CreateButton({
+    Name = "Teleport to Safe Zone",
+    Callback = function()
+        print("Teleported to safe zone")
+        -- Thêm code teleport
+    end,
+})
+
+MiscTab:CreateToggle({
+    Name = "ESP Players",
+    CurrentValue = false,
+    Flag = "ESP",
+    Callback = function(Value)
+        print("ESP:", Value)
+    end,
+})
+
+MiscTab:CreateInput({
+    Name = "Set WalkSpeed",
+    PlaceholderText = "Nhập số...",
+    RemoveTextOnFocus = false,
+    Callback = function(Text)
+        print("WalkSpeed set to:", Text)
+    end,
+})
+
+print("Robeowemeantay Hub loaded successfully!")
