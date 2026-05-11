@@ -1,143 +1,165 @@
--- ==========================================
--- DUG HUB - BẢN TEST ĐẦU TIÊN
--- ==========================================
+-- [[ DUG HUB - PHIÊN BẢN TỔNG HỢP TEST LẦN 1 ]] --
 
+-- 1. SERVICES & BIẾN KHỞI TẠO
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local VirtualUser = game:GetService("VirtualUser")
+local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
--- Biến lưu trạng thái chức năng
+-- Trạng thái chức năng
 _G.AutoFarm = false
 _G.FastAttack = false
 _G.BringMobs = false
 _G.AutoLevel = false
 
--- ================== TẠO GUI ==================
-local DugHub = Instance.new("ScreenGui")
-DugHub.Name = "DugHub"
-DugHub.Parent = CoreGui
+-- 2. HÀM HỖ TRỢ (UTILITIES)
+-- Chống AFK
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    task.wait(1)
+    VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+end)
 
--- Nút Bật/Tắt (Toggle Button)
+-- Tự động cầm vũ khí (Melee hoặc Sword)
+local function EquipWeapon()
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword") then
+            tool.Parent = char
+        end
+    end
+end
+
+-- 3. GIAO DIỆN (UI)
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "DugHub_Final"
+ScreenGui.Parent = CoreGui
+
+-- Nút Toggle (Mở/Đóng)
 local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
-ToggleBtn.Position = UDim2.new(0, 10, 0, 10)
+ToggleBtn.Size = UDim2.new(0, 60, 0, 30)
+ToggleBtn.Position = UDim2.new(0, 10, 0, 150)
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-ToggleBtn.TextColor3 = Color3.fromRGB(0, 255, 128) -- Neon Green
-ToggleBtn.Text = "MỞ"
-ToggleBtn.Font = Enum.Font.Code
-ToggleBtn.TextScaled = true
-ToggleBtn.Parent = DugHub
+ToggleBtn.TextColor3 = Color3.fromRGB(0, 255, 128)
+ToggleBtn.Text = "MENU"
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.Parent = ScreenGui
 
--- Khung chính (Main Frame)
+-- Khung chính
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 300, 0, 350)
-MainFrame.Position = UDim2.new(0.5, -150, 0.5, -175)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-MainFrame.BorderSizePixel = 2
-MainFrame.BorderColor3 = Color3.fromRGB(0, 255, 128)
+MainFrame.Size = UDim2.new(0, 320, 0, 400)
+MainFrame.Position = UDim2.new(0.5, -160, 0.5, -200)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+MainFrame.BorderSizePixel = 0
 MainFrame.Visible = false
-MainFrame.Parent = DugHub
+MainFrame.Parent = ScreenGui
+
+-- Bo góc UI
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 10)
+Corner.Parent = MainFrame
 
 -- Tiêu đề
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 40)
-Title.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+Title.Size = UDim2.new(1, 0, 0, 50)
+Title.Text = "DUG HUB | BLOX FRUIT"
 Title.TextColor3 = Color3.fromRGB(0, 255, 128)
-Title.Text = "DUG HUB | AUTO BLOX FRUIT"
+Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 Title.Font = Enum.Font.Code
-Title.TextSize = 18
-Title.Font = Enum.Font.GothamBold
+Title.TextSize = 20
 Title.Parent = MainFrame
 
--- Hàm tạo nút chức năng
-local function createButton(name, posY, callback)
+-- Layout cho các nút
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Parent = MainFrame
+UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+UIListLayout.Padding = UDim.new(0, 10)
+
+local Padding = Instance.new("UIPadding")
+Padding.PaddingTop = UDim.new(0, 60)
+Padding.Parent = MainFrame
+
+-- Hàm tạo nút
+local function AddButton(text, callback)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.9, 0, 0, 40)
-    btn.Position = UDim2.new(0.05, 0, 0, posY)
-    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    btn.Size = UDim2.new(0, 280, 0, 45)
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Text = name .. " [TẮT]"
+    btn.Text = text .. ": OFF"
     btn.Font = Enum.Font.GothamSemibold
     btn.TextSize = 14
     btn.Parent = MainFrame
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 6)
+    btnCorner.Parent = btn
 
-    local toggled = false
+    local state = false
     btn.MouseButton1Click:Connect(function()
-        toggled = not toggled
-        if toggled then
-            btn.Text = name .. " [BẬT]"
-            btn.TextColor3 = Color3.fromRGB(0, 255, 128)
-        else
-            btn.Text = name .. " [TẮT]"
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        end
-        callback(toggled)
+        state = not state
+        btn.Text = text .. (state and ": ON" or ": OFF")
+        btn.TextColor3 = state and Color3.fromRGB(0, 255, 128) or Color3.fromRGB(255, 255, 255)
+        callback(state)
     end)
 end
 
--- ================== XỬ LÝ CHỨC NĂNG ==================
-
--- 1. Tự động gom quái (Bring Mobs)
-createButton("Tự Động Gom Quái", 60, function(state)
-    _G.BringMobs = state
-    task.spawn(function()
-        while _G.BringMobs do
-            task.wait(0.1)
-            -- Logic gom quái: Lấy CFrame của LocalPlayer và set CFrame của quái (workspace.Enemies) về đó
-            -- Cần check NetworkOwnership để không bị lỗi
-        end
-    end)
+-- 4. LOGIC CHỨC NĂNG
+-- Nút 1: Gom quái
+AddButton("Gom Quái (Bring)", function(v)
+    _G.BringMobs = v
 end)
 
--- 2. Đánh siêu nhanh (Fast Attack)
-createButton("Đánh Siêu Nhanh", 110, function(state)
-    _G.FastAttack = state
-    task.spawn(function()
-        while _G.FastAttack do
-            task.wait()
-            -- Logic Fast Attack: Thay đổi tốc độ animation (getupvalues/setupvalues) 
-            -- hoặc spam RemoteEvent "RegisterAttack" của game
-        end
-    end)
+-- Nút 2: Đánh siêu nhanh
+AddButton("Đánh Siêu Nhanh", function(v)
+    _G.FastAttack = v
 end)
 
--- 3. Bay đến đảo gom quái & Đánh (Teleport & Farm)
-createButton("Bay Đến Đảo & Gom Quái", 160, function(state)
-    _G.AutoFarm = state
-    task.spawn(function()
-        while _G.AutoFarm do
-            task.wait(0.5)
-            -- Logic: TweenService để mượt mà di chuyển (Tween CFrame) đến vị trí đảo.
-            -- Kết hợp vòng lặp tìm quái gần nhất và auto click.
-        end
-    end)
+-- Nút 3: Bay & Farm
+AddButton("Bay Tới Đảo & Farm", function(v)
+    _G.AutoFarm = v
 end)
 
--- 4. Auto Cày Level (Auto Farm Level)
-createButton("Auto Cày Level", 210, function(state)
-    _G.AutoLevel = state
-    task.spawn(function()
-        while _G.AutoLevel do
-            task.wait(1)
-            -- Logic: 
-            -- 1. Lấy cấp độ hiện tại
-            -- 2. Bay đến NPC nhận Quest phù hợp
-            -- 3. FireServer để nhận Quest
-            -- 4. Bay ra bãi quái tương ứng và bật AutoFarm
-        end
-    end)
+-- Nút 4: Auto Level
+AddButton("Auto Cày Level", function(v)
+    _G.AutoLevel = v
 end)
 
--- ================== SỰ KIỆN NÚT ==================
--- Mở / Đóng Menu
-ToggleBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
-    if MainFrame.Visible then
-        ToggleBtn.Text = "ĐÓNG"
-        ToggleBtn.TextColor3 = Color3.fromRGB(255, 50, 50)
-    else
-        ToggleBtn.Text = "MỞ"
-        ToggleBtn.TextColor3 = Color3.fromRGB(0, 255, 128)
+-- 5. VÒNG LẶP HÀNH ĐỘNG (LOOPS)
+-- Loop xử lý Gom quái
+task.spawn(function()
+    while task.wait() do
+        if _G.BringMobs then
+            pcall(function()
+                for _, v in pairs(workspace.Enemies:GetChildren()) do
+                    if v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+                        v.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -5)
+                        v.HumanoidRootPart.CanCollide = false -- Tránh bị kẹt
+                    end
+                end
+            end)
+        end
     end
 end)
+
+-- Loop xử lý Auto Đánh & Cầm vũ khí
+task.spawn(function()
+    while task.wait() do
+        if _G.AutoFarm or _G.FastAttack or _G.AutoLevel then
+            pcall(function()
+                EquipWeapon()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton1(Vector2.new(850, 500), workspace.CurrentCamera.CFrame)
+            end)
+        end
+    end
+end)
+
+-- Sự kiện ẩn/hiện Menu
+ToggleBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+
+print("Dug Hub Loaded Successfully!")
