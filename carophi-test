@@ -1,0 +1,386 @@
+-- =====================================================
+-- NEXUS HUB | BLOX FRUITS - PREMIUM SINGLE FILE
+-- Version: 1.3.0
+-- Style: Redz Hub / Premium Futuristic
+-- Theme: Red Black Futuristic
+-- Optimized FPS | PC + Mobile Support
+-- =====================================================
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Lighting = game:GetService("Lighting")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local character = player.Character or player.CharacterAdded:Wait()
+local rootPart = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
+
+-- =====================================================
+-- CONFIG SYSTEM
+-- =====================================================
+
+local Config = {
+    AutoFarm = {Enabled = false, FastAttack = true, AutoQuest = true},
+    Fruit = {AutoBuy = false, ESP = true, AutoCollect = false, Mode = "Tween"},
+    Chest = {Enabled = false},
+    Teleport = {Mode = "Tween"},
+    Player = {WalkSpeed = 16, JumpPower = 50, InfiniteJump = false, NoClip = false, Fly = false},
+    Visual = {ESP_NPC = true, ESP_Player = false, ESP_Fruit = true, ESP_Chest = true},
+    Settings = {AntiAFK = true, SaveConfig = true, Volume = 0.5}
+}
+
+local State = {
+    Sea = 1,
+    CurrentTarget = nil,
+    IsFarming = false,
+    Connections = {},
+    Highlights = {},
+    SavedPosition = nil,
+    Debounce = {},
+    FruitHistory = {}
+}
+
+local SaveFile = "NexusHub_Config.json"
+
+local function LoadConfig()
+    if isfile(SaveFile) then
+        pcall(function()
+            local data = HttpService:JSONDecode(readfile(SaveFile))
+            for k, v in pairs(data) do
+                if Config[k] then Config[k] = v end
+            end
+            print("✅ NexusHub: Config loaded")
+        end)
+    end
+end
+
+local function SaveConfig()
+    if Config.Settings.SaveConfig then
+        pcall(function()
+            writefile(SaveFile, HttpService:JSONEncode(Config))
+        end)
+    end
+end
+
+LoadConfig()
+
+-- =====================================================
+-- UTILITY FUNCTIONS
+-- =====================================================
+
+local Utility = {}
+
+function Utility:GetCurrentSea()
+    if game.PlaceId == 2753915549 then return 1
+    elseif game.PlaceId == 4442272183 then return 2
+    elseif game.PlaceId == 7449423635 then return 3
+    end
+    return 1
+end
+
+function Utility:Notify(title, text, duration)
+    duration = duration or 4
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "NEXUS HUB | " .. title,
+        Text = text,
+        Duration = duration,
+        Icon = "rbxassetid://1234567890" -- placeholder
+    })
+end
+
+function Utility:CreateHighlight(obj, color)
+    if not obj or State.Highlights[obj] then return end
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = obj
+    highlight.FillColor = color or Color3.fromRGB(255, 50, 50)
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.FillTransparency = 0.7
+    highlight.OutlineTransparency = 0
+    highlight.Parent = obj
+    State.Highlights[obj] = highlight
+    return highlight
+end
+
+function Utility:DestroyAllHighlights()
+    for obj, hl in pairs(State.Highlights) do
+        pcall(function() hl:Destroy() end)
+    end
+    State.Highlights = {}
+end
+
+function Utility:TweenTo(targetCFrame, duration)
+    duration = duration or 1.5
+    if not rootPart then return end
+    local tween = TweenService:Create(rootPart, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {CFrame = targetCFrame})
+    tween:Play()
+    return tween
+end
+
+State.Sea = Utility:GetCurrentSea()
+
+-- =====================================================
+-- GUI SYSTEM (Premium Futuristic)
+-- =====================================================
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "NexusHub"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = playerGui
+
+-- Floating Button
+local FloatBtn = Instance.new("TextButton")
+FloatBtn.Name = "FloatBtn"
+FloatBtn.Size = UDim2.new(0, 60, 0, 60)
+FloatBtn.Position = UDim2.new(0.05, 0, 0.5, -30)
+FloatBtn.BackgroundColor3 = Color3.fromRGB(200, 20, 20)
+FloatBtn.Text = "N"
+FloatBtn.TextColor3 = Color3.new(1,1,1)
+FloatBtn.TextScaled = true
+FloatBtn.Font = Enum.Font.GothamBold
+FloatBtn.Parent = ScreenGui
+
+local UICornerFloat = Instance.new("UICorner", FloatBtn)
+UICornerFloat.CornerRadius = UDim.new(1, 0)
+
+local UIGlow = Instance.new("UIStroke", FloatBtn)
+UIGlow.Thickness = 3
+UIGlow.Color = Color3.fromRGB(255, 80, 80)
+UIGlow.Transparency = 0.6
+
+-- Main GUI
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 680, 0, 480)
+MainFrame.Position = UDim2.new(0.5, -340, 0.5, -240)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+MainFrame.Visible = false
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner", MainFrame)
+MainCorner.CornerRadius = UDim.new(0, 16)
+
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 55)
+TitleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+TitleBar.Parent = MainFrame
+local TitleCorner = Instance.new("UICorner", TitleBar)
+TitleCorner.CornerRadius = UDim.new(0, 16)
+
+local Title = Instance.new("TextLabel")
+Title.Text = "NEXUS HUB"
+Title.TextColor3 = Color3.fromRGB(255, 60, 60)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 22
+Title.BackgroundTransparency = 1
+Title.Size = UDim2.new(0.5, 0, 1, 0)
+Title.Position = UDim2.new(0, 25, 0, 0)
+Title.Parent = TitleBar
+
+-- Tabs
+local TabHolder = Instance.new("Frame")
+TabHolder.Size = UDim2.new(0.28, 0, 0.85, 0)
+TabHolder.Position = UDim2.new(0.02, 0, 0.12, 0)
+TabHolder.BackgroundTransparency = 1
+TabHolder.Parent = MainFrame
+
+local ContentHolder = Instance.new("Frame")
+ContentHolder.Size = UDim2.new(0.68, 0, 0.85, 0)
+ContentHolder.Position = UDim2.new(0.3, 0, 0.12, 0)
+ContentHolder.BackgroundColor3 = Color3.fromRGB(22, 22, 27)
+ContentHolder.Parent = MainFrame
+local ContentCorner = Instance.new("UICorner", ContentHolder)
+ContentCorner.CornerRadius = UDim.new(0, 12)
+
+-- Draggable
+local dragging = false
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        local mousePos = input.Position
+        local framePos = MainFrame.Position
+        local conn
+        conn = UserInputService.InputChanged:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = inp.Position - mousePos
+                MainFrame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y)
+            end
+        end)
+        UserInputService.InputEnded:Connect(function() conn:Disconnect() dragging = false end)
+    end
+end)
+
+-- Floating Button Logic
+local guiOpen = false
+FloatBtn.MouseButton1Click:Connect(function()
+    guiOpen = not guiOpen
+    MainFrame.Visible = guiOpen
+    TweenService:Create(FloatBtn, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Rotation = guiOpen and 180 or 0}):Play()
+end)
+
+-- =====================================================
+-- TAB CREATION
+-- =====================================================
+
+local Tabs = {}
+local function CreateTab(name)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 45)
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    btn.Text = name
+    btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 15
+    btn.Parent = TabHolder
+    local bc = Instance.new("UICorner", btn)
+    bc.CornerRadius = UDim.new(0, 10)
+
+    local content = Instance.new("ScrollingFrame")
+    content.Size = UDim2.new(1, -20, 1, -20)
+    content.Position = UDim2.new(0, 10, 0, 10)
+    content.BackgroundTransparency = 1
+    content.ScrollBarThickness = 6
+    content.Visible = false
+    content.Parent = ContentHolder
+
+    btn.MouseButton1Click:Connect(function()
+        for _, v in pairs(Tabs) do v.content.Visible = false end
+        content.Visible = true
+    end)
+
+    table.insert(Tabs, {button = btn, content = content})
+    return content
+end
+
+local MainTab = CreateTab("Main")
+local FarmTab = CreateTab("Auto Farm")
+local FruitTab = CreateTab("Fruit")
+local ChestTab = CreateTab("Chest")
+local TeleTab = CreateTab("Teleport")
+local PlayerTab = CreateTab("Player")
+local VisualTab = CreateTab("Visual")
+local SettingsTab = CreateTab("Settings")
+
+-- Default open
+Tabs[1].content.Visible = true
+
+-- =====================================================
+-- TOGGLE & SLIDER HELPERS
+-- =====================================================
+
+local function CreateToggle(parent, text, default, callback)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 0, 50)
+    frame.BackgroundTransparency = 1
+    frame.Parent = parent
+
+    local label = Instance.new("TextLabel")
+    label.Text = text
+    label.TextColor3 = Color3.new(1,1,1)
+    label.Font = Enum.Font.Gotham
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Size = UDim2.new(0.7,0,1,0)
+    label.BackgroundTransparency = 1
+    label.Parent = frame
+
+    local toggle = Instance.new("TextButton")
+    toggle.Size = UDim2.new(0, 55, 0, 28)
+    toggle.Position = UDim2.new(0.82, 0, 0.5, -14)
+    toggle.BackgroundColor3 = default and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(70,70,70)
+    toggle.Text = ""
+    toggle.Parent = frame
+    Instance.new("UICorner", toggle).CornerRadius = UDim.new(1,0)
+
+    local knob = Instance.new("Frame", toggle)
+    knob.Size = UDim2.new(0,22,0,22)
+    knob.Position = UDim2.new(default and 0.55 or 0.05, 0, 0.5, -11)
+    knob.BackgroundColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+
+    toggle.MouseButton1Click:Connect(function()
+        default = not default
+        TweenService:Create(toggle, TweenInfo.new(0.25), {BackgroundColor3 = default and Color3.fromRGB(0,180,80) or Color3.fromRGB(70,70,70)}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.25), {Position = default and UDim2.new(0.55,0,0.5,-11) or UDim2.new(0.05,0,0.5,-11)}):Play()
+        callback(default)
+    end)
+end
+
+-- Auto Farm Tab
+CreateToggle(FarmTab, "Auto Farm", Config.AutoFarm.Enabled, function(v)
+    Config.AutoFarm.Enabled = v
+    State.IsFarming = v
+end)
+
+CreateToggle(FarmTab, "Fast Attack", Config.AutoFarm.FastAttack, function(v) Config.AutoFarm.FastAttack = v end)
+CreateToggle(FarmTab, "Auto Quest", Config.AutoFarm.AutoQuest, function(v) Config.AutoFarm.AutoQuest = v end)
+
+-- Fruit Tab
+CreateToggle(FruitTab, "Auto Random Fruit", Config.Fruit.AutoBuy, function(v) Config.Fruit.AutoBuy = v end)
+CreateToggle(FruitTab, "Fruit ESP", Config.Fruit.ESP, function(v) Config.Fruit.ESP = v end)
+CreateToggle(FruitTab, "Auto Collect Fruit", Config.Fruit.AutoCollect, function(v) Config.Fruit.AutoCollect = v end)
+
+-- Visual Tab
+CreateToggle(VisualTab, "ESP NPC", Config.Visual.ESP_NPC, function(v) Config.Visual.ESP_NPC = v end)
+CreateToggle(VisualTab, "ESP Player", Config.Visual.ESP_Player, function(v) Config.Visual.ESP_Player = v end)
+CreateToggle(VisualTab, "ESP Fruit", Config.Visual.ESP_Fruit, function(v) Config.Visual.ESP_Fruit = v end)
+CreateToggle(VisualTab, "ESP Chest", Config.Visual.ESP_Chest, function(v) Config.Visual.ESP_Chest = v end)
+
+-- =====================================================
+-- MAIN LOOPS
+-- =====================================================
+
+RunService.Heartbeat:Connect(function()
+    pcall(function()
+        if Config.AutoFarm.Enabled and State.IsFarming then
+            -- Auto Farm Logic (placeholder for full implementation)
+            local nearest = nil
+            local dist = math.huge
+            for _, enemy in ipairs(Workspace.Enemies:GetChildren()) do
+                if enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
+                    local d = (rootPart.Position - enemy.HumanoidRootPart.Position).Magnitude
+                    if d < dist then dist = d nearest = enemy end
+                end
+            end
+            if nearest then
+                State.CurrentTarget = nearest
+                Utility:TweenTo(nearest.HumanoidRootPart.CFrame * CFrame.new(0, 5, 8), 0.8)
+            end
+        end
+
+        -- ESP Update
+        if Config.Visual.ESP_Fruit then
+            for _, fruit in ipairs(Workspace:GetChildren()) do
+                if fruit.Name:find("Fruit") then
+                    Utility:CreateHighlight(fruit, Color3.fromRGB(255, 215, 0))
+                end
+            end
+        end
+    end)
+end)
+
+-- Anti-AFK
+player.Idled:Connect(function()
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.RightMeta, false, game)
+    task.wait(1)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.RightMeta, false, game)
+end)
+
+-- Cleanup
+ScreenGui.AncestryChanged:Connect(function()
+    if not ScreenGui.Parent then
+        SaveConfig()
+        Utility:DestroyAllHighlights()
+    end
+end)
+
+Utility:Notify("NEXUS HUB", "Loaded Successfully | Sea " .. State.Sea, 6)
+
+print("NEXUS HUB Premium Initialized - Enjoy farming!")
