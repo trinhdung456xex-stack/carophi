@@ -1,0 +1,2074 @@
+-- ElectronAC Client
+-- Deobfuscated and beautified by skidder hideout
+
+local floor = math.floor
+local random = math.random
+local remove = table.remove
+local char = string.char
+
+-- ============================================================
+-- Substitution cipher lookup table (used for string encoding)
+-- ============================================================
+local charLookup = {}
+local charMap = {}
+local seed = 1
+local indices = {}
+
+for i = 1, 256 do
+    indices[i] = i
+end
+
+repeat
+    local idx = random(1, #indices)
+    local val = remove(indices, idx)
+    local ch = char(val - 1)
+    charMap[val] = ch
+until #indices == 0
+
+-- ============================================================
+-- PRNG (pseudo-random number generator for cipher stream)
+-- ============================================================
+local prngState = 0
+local prngShift = 2
+
+local function prngNext()
+    prngState = (prngState * 61 + 13889955300737) % 35184372088832
+    local r = floor(prngState / 2 ^ (13 - (prngShift - prngShift % 32) / 32))
+    floor((((r % 4294967296.0) / 2 ^ (prngShift % 32)) % 1) * 4294967296.0)
+    floor((r % 4294967296.0) / 2 ^ (prngShift % 32))
+end
+
+-- ============================================================
+-- String encoder (XOR-like cipher using charMap + PRNG)
+-- ============================================================
+local encodedStrings = {}
+
+local function encodeString(input, key)
+    if encodedStrings[key] then
+        return key
+    end
+
+    local result = ""
+    local carry = 15
+
+    for i = 1, #input do
+        local byte = string.byte(input, i)
+        local rnd = prngNext()
+        carry = ((byte + rnd) + carry) % 256
+        local encodedByte = ((byte + rnd) + carry) % 256
+        result = result .. charMap[encodedByte + 1]
+    end
+
+    encodedStrings[key] = result
+    return key
+end
+
+-- ============================================================
+-- Module registry and lazy-loader
+-- ============================================================
+local moduleRegistry = {}
+local moduleCache = {}
+
+local function getModule(id)
+    local cached = moduleCache[id]
+    if cached then
+        return cached
+    end
+    local loaded = moduleRegistry[id]()
+    moduleCache[id] = moduleRegistry
+    return loaded
+end
+
+-- ============================================================
+-- Metatable proxy (anti-debug shield)
+-- ============================================================
+local acProxy = setmetatable({}, { __index = encodedStrings, __metatable = nil })
+
+-- ============================================================
+-- MODULE: Core Initialization & Setup
+-- ============================================================
+moduleRegistry["core"] = function()
+    local env = getfenv and getfenv() or _ENV
+
+    local SendNUIMessage        = SendNUIMessage
+    local CreateThread          = Citizen.CreateThread
+    local Wait                  = Wait
+    local PlayerPedId           = PlayerPedId
+    local HasPedGotWeapon       = HasPedGotWeapon
+    local LocalPlayer           = LocalPlayer
+    local RegisterNetEvent      = RegisterNetEvent
+    local GetNetworkTime        = GetNetworkTime
+    local GetEntityCoords       = GetEntityCoords
+    local GetEntityHeading      = GetEntityHeading
+    local GetVehiclePedIsIn     = GetVehiclePedIsIn
+    local RegisterNuiCallback   = RegisterNuiCallback
+    local pcall                 = pcall
+
+    -- Silence debug output to prevent detection evasion via debug hooks
+    local noop = function() end
+    env.print = noop
+    env.warn  = noop
+    env.error = noop
+
+    env.debug = {
+        getupvalue  = function() end,
+        setmetatable = function() end,
+        getinfo     = function() end,
+        traceback   = function() end,
+        getmetatable = function() end,
+    }
+    _G.debug = env.debug
+
+    -- Intercept Citizen.Trace to block server-event detection via log scanning
+    Citizen.Trace = function(...)
+        local args = table.pack(...)
+        local msg = args[1]
+        if string.find(msg, "TriggerServerEventInternal") then
+            return
+        end
+        if string.find(msg, "index a number value") then
+            return
+        end
+    end
+
+    -- Wait ticks to allow environment to settle
+    for i = 2, 14 do Wait(i) end
+
+    -- Screenshot / recording request handlers (NUI callbacks)
+    local screenshotCallbacks = {}
+    local recordingCallbacks  = {}
+
+    RegisterNuiCallback("praVGhGDDwmBe2JB6nj2SfGT1Zge8RoSnLUbgmCTp-", function(data, cb)
+        cb({})
+        local entry = screenshotCallbacks[data.id]
+        if entry then
+            screenshotCallbacks[data.id] = nil
+            entry.cb(data.data)
+        end
+    end)
+
+    RegisterNuiCallback("JQhfocxUR4625QoKI62w62X5V", function(data, cb)
+        cb({})
+        local entry = recordingCallbacks[data.id]
+        if entry then
+            recordingCallbacks[data.id] = nil
+            entry.cb(data.data)
+        end
+    end)
+
+    -- Export: screenshotPlayer
+    exports("ElectronAC", "screenshotPlayer", function() end)
+    -- Export: recordPlayer
+    exports("ElectronAC", "recordPlayer",     function() end)
+
+    -- Net event: replay toggle
+    RegisterNetEvent("VUwmG3ku78YB7hyHg", function(data)
+        if data and data.replay then
+            if data.replay.enabled then
+                SendNUIMessage({ replayRequest = { enabled = true } })
+            else
+                SendNUIMessage({ replayRequest = { enabled = false } })
+            end
+        end
+    end)
+
+    -- Thread: anti-offline heartbeat
+    CreateThread(function()
+        encodeString("CGhpJW31KHP0hCmAbeFQDdVO", 0)
+        Wait(5000)
+    end)
+
+    -- Thread: weapon state sync to player state bag
+    CreateThread(function()
+        local ped   = PlayerPedId()
+        local state = LocalPlayer.state.oPFftV7hqxe6LviM_81cEqOGJi6fv5bSv5zb
+        for key, _ in pairs(getModule("settings").weapons) do
+            HasPedGotWeapon(ped, getModule("settings"), encodeString)
+            if acProxy then
+                state[getModule("settings")] = true
+            end
+        end
+        LocalPlayer.state:set("oPFftV7hqxe6LviM_81cEqOGJi6fv5bSv5zb", state, true)
+    end)
+
+    -- Thread: network time sync to state bag
+    CreateThread(function()
+        local multiplier = tonumber("55925")
+        local netTime = GetNetworkTime()
+        if netTime then
+            LocalPlayer.state:set("51KU74ZIyibEmn8czaR9DVx", netTime * multiplier, true)
+        end
+        Wait(10000)
+    end)
+end
+
+-- ============================================================
+-- MODULE: Admin Menu — Freecam
+-- ============================================================
+moduleRegistry["freecam"] = function()
+    local env = getfenv and getfenv() or _ENV
+
+    local CreateThread        = Citizen.CreateThread
+    local Wait                = Wait
+    local PlayerPedId         = PlayerPedId
+    local GetEntityCoords     = GetEntityCoords
+    local GetEntityHeading    = GetEntityHeading
+    local GetVehiclePedIsIn   = GetVehiclePedIsIn
+    local CreateCam           = CreateCam
+    local SetCamCoord         = SetCamCoord
+    local SetCamRot           = SetCamRot
+    local SetCamFov           = SetCamFov
+    local RenderScriptCams    = RenderScriptCams
+    local DisableAllControlActions = DisableAllControlActions
+    local EnableControlAction = EnableControlAction
+    local GetControlNormal    = GetControlNormal
+    local IsControlPressed    = IsControlPressed
+    local IsDisabledControlPressed = IsDisabledControlPressed
+
+    local enabled = false
+    local camHandle = nil
+    local camRot = nil
+
+    local speed     = 2.0
+    local rotSpeed  = 3.0
+
+    local controls = {
+        forward   = false,
+        backward  = false,
+        left      = false,
+        right     = false,
+        up        = false,
+        down      = false,
+        speedUp   = false,
+        speedDown = false,
+        mouseX    = 0.0,
+        mouseY    = 0.0,
+    }
+
+    local function getForwardVector(rot)
+        local sinZ = math.sin(rot.z)
+        local cosX = math.abs(math.cos(rot.x))
+        local cosZ = math.cos(rot.z)
+        local sinX = math.sin(rot.x)
+        return { x = -sinZ * cosX, y = cosZ * cosX, z = sinX }
+    end
+
+    local function readControls()
+        if not enabled then return end
+
+        DisableAllControlActions(0)
+        EnableControlAction(0, 200, true)
+
+        controls.forward   = IsDisabledControlPressed(0, 32)
+        controls.backward  = IsDisabledControlPressed(0, 33)
+        controls.left      = IsDisabledControlPressed(0, 34)
+        controls.right     = IsDisabledControlPressed(0, 35)
+        controls.up        = IsDisabledControlPressed(0, 44)
+        controls.down      = IsDisabledControlPressed(0, 38)
+        controls.speedUp   = IsDisabledControlPressed(0, 21)
+        controls.speedDown = IsDisabledControlPressed(0, 19)
+        controls.mouseX    = GetControlNormal(0, 1) * rotSpeed
+        controls.mouseY    = GetControlNormal(0, 2) * rotSpeed
+
+        if IsDisabledControlPressed(0, 14) then
+            speed = math.min(speed * 1.2, 50.0)
+        elseif IsDisabledControlPressed(0, 15) then
+            speed = math.max(speed / 1.2, 0.1)
+        end
+    end
+
+    local function updateCam()
+        if not enabled then return end
+
+        SetCamRot(camHandle, 0, 0, 0)
+
+        if not camRot then return end
+
+        local newPitch = math.max(-89.0, math.min(89.0, camRot.x - controls.mouseY))
+        local newRot   = vector3(newPitch, camRot.y, camRot.z - controls.mouseX)
+        camRot = newRot
+    end
+
+    local function setEnabled(state)
+        if state == enabled then return end
+
+        local adminInfo = getModule("api").getLocalAdminInfo()
+        if not adminInfo.permissions.adminMenu then return end
+
+        enabled = state
+
+        if state then
+            camHandle = CreateCam("DEFAULT_SCRIPTED_CAMERA", true)
+            local ped    = PlayerPedId()
+            local coords = GetEntityCoords(ped)
+            local rot    = GetEntityHeading(ped)
+            SetCamCoord(camHandle, coords.x, coords.y, coords.z)
+            SetCamRot(camHandle, rot, 0, 0, 2)
+            SetCamFov(camHandle, GetGameplayCamFov())
+            RenderScriptCams(true, true, 1000, true, true)
+
+            CreateThread(function()
+                while enabled do
+                    readControls()
+                    updateCam()
+                    Wait(0)
+                end
+            end)
+        else
+            if camHandle then
+                RenderScriptCams(false, true, 1000, true, true)
+                DestroyCam(camHandle, false)
+            end
+        end
+    end
+
+    -- NUI callback: toggle freecam
+    RegisterNuiCallback("1EtzMQtDzlp3", function(data, cb)
+        local adminInfo = getModule("api").getLocalAdminInfo()
+        if not adminInfo.permissions.adminMenu then cb({}) return end
+        cb({})
+    end)
+
+    -- Key bind: F6 to toggle
+    RegisterKeyMapping("Toggle Freecam", "Toggle Freecam", "KEYBOARD", "F6")
+end
+
+-- ============================================================
+-- MODULE: Admin Menu — ESP (player name tags)
+-- ============================================================
+moduleRegistry["esp"] = function()
+    local CreateThread      = Citizen.CreateThread
+    local Wait              = Wait
+    local GetActivePlayers  = GetActivePlayers
+    local GetPlayerPed      = GetPlayerPed
+    local GetPlayerName     = GetPlayerName
+    local GetEntityCoords   = GetEntityCoords
+    local GetPedBoneCoords  = GetPedBoneCoords
+
+    local enabled = false
+
+    local function drawPlayerTag(x, y, z, name)
+        -- Draws a 3D text label above a player's head
+        local onScreen, sx, sy = World3dToScreen2d(x, y, z + 1.0)
+        if onScreen then
+            SetTextScale(0.25, 0.25)
+            SetTextFont(4)
+            SetTextProportional(true)
+            SetTextColour(255, 255, 255, 255)
+            SetTextOutline()
+            SetTextEntry("STRING")
+            AddTextComponentString(name)
+            local w = GetTextScaleWithCurrentScreenResolution(false)
+            SetTextEntry("STRING")
+            AddTextComponentString(name)
+            DrawText(sx - w / 2, sy - 0.01)
+        end
+    end
+
+    local function setEnabled(state)
+        enabled = state
+        if state then
+            CreateThread(function()
+                while enabled do
+                    local myPed = PlayerPedId()
+                    for _, playerId in ipairs(GetActivePlayers()) do
+                        local ped = GetPlayerPed(playerId)
+                        if ped ~= myPed then
+                            local name   = GetPlayerName(playerId)
+                            local coords = GetEntityCoords(ped)
+                            drawPlayerTag(coords.x, coords.y, coords.z, "[" .. playerId .. "] " .. name)
+                        end
+                    end
+                    Wait(0)
+                end
+            end)
+        end
+    end
+end
+
+-- ============================================================
+-- MODULE: Admin Menu — Entity Inspector
+-- ============================================================
+moduleRegistry["entityInspector"] = function()
+    local RegisterNuiCallback = RegisterNuiCallback
+    local DoesEntityExist     = DoesEntityExist
+    local SetEntityAsMissionEntity = SetEntityAsMissionEntity
+    local NetworkGetEntityIsNetworked = NetworkGetEntityIsNetworked
+
+    RegisterNuiCallback("entityInspect", function(data, cb)
+        if not DoesEntityExist(data.entity) then
+            cb({})
+            return
+        end
+
+        SetEntityAsMissionEntity(data.entity, true, true)
+
+        local isNetworked = NetworkGetEntityIsNetworked(data.entity)
+        local netId, owner
+
+        if isNetworked then
+            netId = NetworkGetNetworkIdFromEntity(data.entity)
+            owner = NetworkGetEntityOwner(data.entity)
+        end
+
+        cb({
+            entity     = data.entity,
+            isNetworked = isNetworked,
+            netId      = netId,
+            owner      = owner,
+        })
+    end)
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Aimbot Detection
+-- ============================================================
+moduleRegistry["aimbot"] = function()
+    local CreateThread       = Citizen.CreateThread
+    local Wait               = Wait
+    local IsPlayerFreeAiming = IsPlayerFreeAiming
+    local GetPedTaskTypeIndex = GetPedTaskTypeIndex
+    local GetPedBoneIndex     = GetPedBoneIndex
+    local GetEntityHeading    = GetEntityHeading
+    local IsGameplayCamShaking = IsGameplayCamShaking
+
+    return {
+        name = "aimbot",
+
+        start = function(self, ctx)
+            self.running = true
+
+            CreateThread(function()
+                while self.running do
+                    -- Check for aimbot task (task type 3641635208)
+                    local taskType = GetPedTaskTypeIndex(ctx.ped())
+                    if taskType == 1 then
+                        -- task index 3641635208 indicates aimbot
+                        self.punish("Aimbot detected, aimbot task")
+                    end
+
+                    -- Aiming duration check
+                    local weapon = ctx.weapon()
+                    if weapon ~= 0 then
+                        local isRagdoll = ctx.ragdoll()
+                        if not isRagdoll then
+                            if not self.startedAiming then
+                                self.startedAiming = ctx.timer()
+                            end
+                            local elapsed = ctx.timer() - self.startedAiming
+                            if elapsed > 550 then
+                                self.aiming = true
+                            end
+                        else
+                            self.startedAiming = nil
+                            self.aiming = false
+                        end
+                    else
+                        self.startedAiming = nil
+                        self.aiming = false
+                    end
+
+                    if self.aiming then
+                        local btn = IsDisabledControlPressed(0, 25)
+                        if btn then
+                            local camMode = GetFollowPedCamViewMode()
+                            if camMode ~= 4 then
+                                SetFollowPedCamViewMode(0.0, 0.0, 0.0)
+                            end
+                        else
+                            self.aiming = false
+                        end
+                    end
+
+                    Wait(0)
+                end
+            end)
+        end,
+
+        stop = function(self, ctx)
+            self.running = false
+            if self.handler then
+                RemoveEventHandler(self.handler)
+                self.handler = nil
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Infinite Ammo Detection
+-- ============================================================
+moduleRegistry["infiniteAmmo"] = function()
+    local GetPedAmmoTypeFromWeapon = GetPedAmmoTypeFromWeapon
+    local GetAmmoInClip            = GetAmmoInClip
+    local GetPedAmmoByType         = GetPedAmmoByType
+    local GetPedTaskTypeIndex      = GetPedTaskTypeIndex
+    local GetMaxAmmo               = GetMaxAmmo
+    local RemoveEventHandler       = RemoveEventHandler
+
+    -- Weapons with legitimate infinite ammo (e.g. melee, special)
+    local ammoWhitelist = {
+        [0]            = true,
+        [1171102963]   = true,
+        [660564002]    = true,
+        [-683040155]   = true,
+    }
+
+    return {
+        name = "infiniteAmmo",
+
+        start = function(self, ctx)
+            local handler = AddEventHandler("CEventGunShot", function()
+                local ped    = PlayerPedId()
+                local inVeh  = GetVehiclePedIsIn(ped, false)
+                if GetPedTaskTypeIndex(ped) ~= 6 then return end
+
+                local weapon   = ctx.weapon()
+                local clip,  _ = GetAmmoInClip(ped, weapon)
+                local total, _ = GetPedAmmoByType(ped, weapon)
+                local maxAmmo  = GetMaxAmmo(weapon, 0)
+
+                if not ammoWhitelist[weapon] then
+                    if clip > 499 then
+                        self.punish("Used infinite ammo")
+                    end
+                    if maxAmmo > total then
+                        self.punish("Weapon was loaded with infinite (" .. maxAmmo .. ") bullets")
+                    end
+                end
+            end)
+            self.handler = handler
+        end,
+
+        stop = function(self, ctx)
+            if self.handler then
+                RemoveEventHandler(self.handler)
+                self.handler = nil
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Blacklisted Animation Detection
+-- ============================================================
+moduleRegistry["animBlacklist"] = function()
+    local IsEntityPlayingAnim = IsEntityPlayingAnim
+    local ClearPedTasks       = ClearPedTasks
+
+    local blacklistedAnims = {}  -- populated from settings
+
+    return {
+        name = "animBlacklist",
+
+        tick = function(self, ctx)
+            local ped = ctx.ped()
+            for _, entry in ipairs(blacklistedAnims) do
+                if IsEntityPlayingAnim(ped, entry[1], entry[2], 3) then
+                    self.punish("Tried to play blacklisted animation " .. entry[1] .. " and " .. entry[2])
+                end
+            end
+
+            -- Throw vehicle animation check
+            if IsEntityPlayingAnim(ped, "anim@mp_rollarcoaster", "hands_up_idle_a_player_one", 0) then
+                ClearPedTasks(ped)
+                self.punish("Tried to throw vehicle")
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Armor Hack Detection
+-- ============================================================
+moduleRegistry["armorHack"] = function()
+    local GetPedArmour = GetPedArmour
+
+    return {
+        name = "armorHack",
+
+        tick = function(self, ctx)
+            local ped   = ctx.ped()
+            local armor = GetPedArmour(ped)
+            if armor and armor > self.settings.max then
+                self.punish("Used armor hacks: " .. armor)
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Large Packet / Server Crash Detection
+-- ============================================================
+moduleRegistry["antiCrash"] = function()
+    local AddStateBagChangeHandler = AddStateBagChangeHandler
+    local DeleteResourceKvp        = DeleteResourceKvp
+
+    return {
+        name = "antiCrash",
+
+        start = function(self, ctx)
+            local handler = AddStateBagChangeHandler(nil, nil, function(_, _, value)
+                -- Block oversized state bag values (potential crash exploit)
+                if type(value) == "string" and #value > 131072 then
+                    self.punish("Tried to Crash the Server")
+                    DeleteResourceKvp("")
+                end
+            end)
+            self.statebagHandle = handler
+        end,
+
+        stop = function(self, ctx)
+            if self.statebagHandle then
+                DeleteResourceKvp(self.statebagHandle)
+                self.statebagHandle = nil
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Weapon Component Manipulation
+-- ============================================================
+moduleRegistry["weaponComponents"] = function()
+    local GetPedWeaponComponentTintIndex = GetPedWeaponComponentTintIndex
+    local GetWeaponComponentVariationsCount = GetWeaponComponentVariationsCount
+    local GetIsWeaponComponentActive = GetIsWeaponComponentActive
+
+    -- Known weapon hashes that can be manipulated
+    local weaponComponentList = {
+        -696561875, 834974250, 614078421, -884429072, 283556395,
+        643254679, 889808635, -1101075946, -1323216997, -1614924820,
+        -- ... (full list from original)
+    }
+
+    -- Max damage overrides per weapon hash
+    local weaponDamageTable = {
+        [-86904375]   = 33,
+        [-608341376]  = 47,
+        [177293209]   = 230,
+        [-1075685676] = 45,
+        [2024373456]  = 25,
+        [-1569615261] = 0,
+        -- ... (full table from original)
+    }
+
+    return {
+        name = "weaponComponents",
+
+        tick = function(self, ctx)
+            local ped    = ctx.ped()
+            local weapon = ctx.weapon()
+            local damage = GetWeaponDamage(weapon, 0)
+
+            -- Component tint manipulation check
+            for _, compHash in ipairs(weaponComponentList) do
+                local tint  = GetPedWeaponComponentTintIndex(ped, compHash)
+                local count = GetWeaponComponentVariationsCount(compHash)
+                if count and tint > 1.1 then
+                    self.punish("Player tried to manipulate weapon components")
+                end
+            end
+
+            -- Damage modification check
+            local baseMaxDamage = weaponDamageTable[weapon]
+            if baseMaxDamage then
+                local maxAllowed = baseMaxDamage + self.settings.max
+                local isAttached = GetIsWeaponComponentActive(ped, weapon, false)
+                if damage > maxAllowed then
+                    if not isAttached then
+                        self.punish("Tried to change " .. weapon .. " damage to " .. damage)
+                    end
+                end
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Weapon Fire Rate Manipulation
+-- ============================================================
+moduleRegistry["fireRate"] = function()
+    local GetWeaponTimeBetweenShots = GetWeaponTimeBetweenShots
+
+    -- Default fire intervals per weapon hash (seconds between shots)
+    local defaultFireIntervals = {
+        [0]            = 0.333,
+        [487013001]    = 0.8,
+        [-1955384325]  = 0.0,
+        [453432689]    = 0.37,
+        [2144741730]   = 0.108,
+        [171789620]    = 0.135,
+        [100416529]    = 1.567,
+        [205991906]    = 1.2,
+        [2017895192]   = 1.0,
+        -- ... (full table from original)
+    }
+
+    return {
+        name = "fireRate",
+
+        tick = function(self, ctx)
+            local weapon   = ctx.weapon()
+            local fireTime = GetWeaponTimeBetweenShots(weapon)
+            local baseline = defaultFireIntervals[weapon]
+
+            if fireTime and baseline then
+                if fireTime < baseline - 0.05 then
+                    self.punish("Shoot time of weapon " .. weapon .. " was reduced below normal " .. baseline)
+                end
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Explosive Weapon Detection
+-- ============================================================
+moduleRegistry["explosiveWeapons"] = function()
+    local GetWeaponDamageType = GetWeaponDamageType
+    local NetworkSendAngerEvent = NetworkSendAngerEvent
+
+    return {
+        name = "explosiveWeapons",
+
+        tick = function(self, ctx)
+            local player = ctx.player()
+            local weapon = ctx.weapon()
+            local damageType = GetWeaponDamageType(weapon)
+
+            -- Damage types 4, 5, 6, 13 = explosive/fire/incendiary
+            if damageType == 4 then
+                if not self.settings.whitelist[weapon] then
+                    self.punish("Tried to use explosive weapon damage, weapon: " .. weapon)
+                end
+            elseif damageType == 13 then
+                NetworkSendAngerEvent(player)
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Noclip Detection
+-- ============================================================
+moduleRegistry["noclip"] = function()
+    local GetGroundZFor_3dCoord       = GetGroundZFor_3dCoord
+    local IsPedRagdoll                = IsPedRagdoll
+    local GetEntityVelocity           = GetEntityVelocity
+    local IsPedClimbing               = IsPedClimbing
+    local GetPedStealthMovement       = GetPedStealthMovement
+    local IsEntityInWater             = IsEntityInWater
+    local IsEntityOnScreen            = IsEntityOnScreen
+    local IsPedInMeleeCombat          = IsPedInMeleeCombat
+
+    -- Noclip-exempt positions (e.g. high-altitude areas, tunnels)
+    local safePositions = {
+        vector3(-2022.0, -355.0, 48.106),
+        vector3(-100.9999, -60.0001, 56.3038),
+        vector3(948.0003, -52.0001, 78.293),
+        vector3(-79.9998, -1406.0002, 29.3147),
+        -- ... (full list from original)
+    }
+
+    local function isNearSafePosition(pos)
+        local nearest = math.huge
+        for _, safePos in pairs(safePositions) do
+            local dist = #(vector2(pos.x, pos.y) - vector2(safePos.x, safePos.y))
+            if dist < nearest then nearest = dist end
+        end
+        return nearest
+    end
+
+    local function isValidMovementState(ped)
+        if GetFollowPedCamViewMode() == 2 then return true end
+        if IsEntityPlayingAnim(ped, "nm", "firemans_carry", 3) then return true end
+        if IsPedRagdoll(ped) then return true end
+        if IsEntityInWater(ped) then return true end
+        if IsPedInMeleeCombat(ped) then return true end
+        if GetEntityVelocity(ped).z ~= 0.0 then return true end
+        if IsPlayerSwitchInProgress() then return true end
+        return false
+    end
+
+    return {
+        name = "noclip",
+
+        tick = function(self, ctx)
+            local ped     = ctx.ped()
+            local pos     = ctx.pos()
+            local vehicle = ctx.vehicle()
+            local ragdoll = ctx.ragdoll()
+
+            if not self.firstPos then
+                self.firstPos = pos
+            end
+
+            local _, groundZ = GetGroundZFor_3dCoord(pos.x, pos.y, 99999.0, true)
+            if not groundZ then return end
+
+            local heightAboveGround = pos.z - groundZ
+            local distAboveGround   = GetEntityHeightAboveGround(ped) - heightAboveGround
+
+            if vehicle == 0 then
+                local velocity = GetEntityVelocity(ped)
+                local speed    = #(pos - (self.prevPos or pos))
+
+                local isClimbing = IsPedClimbing(ped)
+                if isClimbing then
+                    if not self.initialClimbingPos then
+                        self.initialClimbingPos = pos
+                    end
+                else
+                    self.initialClimbingPos = nil
+                end
+
+                -- Climbing horizontal distance check
+                if heightAboveGround > 20 then
+                    if self.initialClimbingPos then
+                        local hDist = #(vector2(pos.x, pos.y) - vector2(self.initialClimbingPos.x, self.initialClimbingPos.y))
+                        if hDist > 10.0 then
+                            self.punish("Noclip detected (7)")
+                        end
+                    end
+                end
+
+                -- Above-map movement check
+                if heightAboveGround > 20 then
+                    if not self.initialAboveMapPos then
+                        self.initialAboveMapPos = pos
+                    end
+                else
+                    self.initialAboveMapPos = nil
+                end
+                if self.initialAboveMapPos then
+                    local hDist = #(vector2(pos.x, pos.y) - vector2(self.initialAboveMapPos.x, self.initialAboveMapPos.y))
+                    if hDist > 10.0 then
+                        self.punish("Noclip detected (6)")
+                    end
+                end
+
+                -- Floating off-ground check
+                if math.abs(distAboveGround) > 0.5 then
+                    if speed < 0.01 then
+                        self.punish("Noclip detected (3)")
+                    end
+                end
+
+                -- Rising while on ground check
+                if distAboveGround == 0.0 then
+                    if pos.z > (self.prevPos or pos).z then
+                        self.heightFlags = (self.heightFlags or 0) + 1
+                        if self.heightFlags >= 3 then
+                            self.punish("Noclip detected (10)")
+                        end
+                    end
+                else
+                    self.heightFlags = 0
+                end
+
+                -- Stationary but teleporting check
+                if not ragdoll then
+                    if math.min(heightAboveGround, GetEntityHeightAboveGround(ped)) > 10 then
+                        if not isValidMovementState(ped) then
+                            if not self.startPosition then
+                                self.startPosition = pos
+                            end
+                            if #(pos - self.startPosition) > 20 then
+                                self.punish("Noclip detected (2)")
+                            end
+                        else
+                            self.startPosition = nil
+                        end
+                    else
+                        self.startPosition = nil
+                    end
+
+                    -- Zero velocity noclip check
+                    local vel = GetEntityVelocity(ped)
+                    if vel.x == 0.0 then
+                        if not IsPedFalling(ped) then
+                            if not isValidMovementState(ped) then
+                                self.flags = (self.flags or 0) + 1
+                                if self.flags >= 5 then
+                                    self.punish("Noclip detected (1)")
+                                end
+                            else
+                                self.flags = 0
+                            end
+                        end
+                    else
+                        self.flags = 0
+                    end
+                end
+
+                -- Spoofed noclip detection
+                if isClimbing then
+                    if not NetworkIsPlayerActive(ctx.player()) then
+                        self.punish("Spoofed noclip detected (9)")
+                    end
+                end
+            end
+
+            self.prevPos               = pos
+            self.prevHeightAboveGround = GetEntityHeightAboveGround(ped)
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Teleport Detection
+-- ============================================================
+moduleRegistry["teleport"] = function()
+    local GetGroundZFor_3dCoord = GetGroundZFor_3dCoord
+    local IsPlayerSwitchInProgress = IsPlayerSwitchInProgress
+    local IsPedRagdoll          = IsPedRagdoll
+    local GetEntityVelocity     = GetEntityVelocity
+
+    return {
+        name = "teleport",
+
+        tick = function(self, ctx)
+            local ped     = ctx.ped()
+            local pos     = ctx.pos()
+            local vehicle = ctx.vehicle()
+            local player  = ctx.player()
+            local timer   = ctx.timer()
+
+            if self.lastPos then
+                if vehicle == 0 then
+                    local hDist = #(vector2(pos.x, pos.y) - vector2(self.lastPos.x, self.lastPos.y))
+
+                    if hDist > 30.0 then
+                        -- Validate movement reason (animations, ragdoll, etc.)
+                        local isRagdoll = IsPedRagdoll(ped)
+                        if not isRagdoll then
+                            self.lastTeleport = timer
+
+                            -- Track unique positions
+                            table.insert(self.positions, 1, pos)
+
+                            if #self.positions >= self.settings.max then
+                                local uniquePos = {}
+                                for _, p in pairs(self.positions) do
+                                    local key = math.floor(p.x) .. "," .. math.floor(p.y)
+                                    if not uniquePos[key] then
+                                        uniquePos[key] = true
+                                    end
+                                end
+                                if #self.positions >= self.settings.max then
+                                    SetEntityVelocity(ped, 0, 0, 0)
+                                    self.positions = {}
+                                    self.punish("Tried to teleport")
+                                end
+                            end
+                        end
+                    else
+                        self.positions = {}
+                    end
+                end
+            end
+
+            if NetworkIsPlayerActive(player) then
+                self.positions = {}
+            end
+
+            if timer - 30000 > 30000 then
+                self.positions = {}
+            end
+
+            self.lastPos = pos
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Health Hack Detection
+-- ============================================================
+moduleRegistry["healthHack"] = function()
+    local GetEntityHealth = GetEntityHealth
+
+    return {
+        name = "healthHack",
+
+        tick = function(self, ctx)
+            local ped    = ctx.ped()
+            local health = GetEntityHealth(ped)
+            if health and health > self.settings.max then
+                self.punish("Used health hacks : " .. health)
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Spectate Detection
+-- ============================================================
+moduleRegistry["spectate"] = function()
+    local NetworkIsInSpectatorMode = NetworkIsInSpectatorMode
+    local GetFollowPedCamViewMode  = GetFollowPedCamViewMode
+    local IsPedDeadOrDying         = IsPedDeadOrDying
+
+    return {
+        name = "spectate",
+
+        tick = function(self, ctx)
+            local ped = ctx.ped()
+
+            if NetworkIsInSpectatorMode() then
+                self.punish("Tried to spectate another player")
+            end
+
+            local camMode  = GetFollowPedCamViewMode(ped)
+            local isDead   = IsPedDeadOrDying(ped, false)
+            if not isDead and camMode < 0 then
+                self.punish("Tried to spectate")
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Speed Hack / God Mode Detection
+-- ============================================================
+moduleRegistry["speedHack"] = function()
+    local GetEntitySpeed   = GetEntitySpeed
+    local IsPedRagdoll     = IsPedRagdoll
+    local IsPedShooting    = IsPedShooting
+    local IsPedClimbing    = IsPedClimbing
+    local IsEntityInWater  = IsEntityInWater
+    local IsPedJumping     = IsPedJumping
+
+    -- Whitelisted ped models (e.g. mission-specific)
+    local pedModelWhitelist = {
+        [-1686040670]   = true,
+        [11966224]      = true,
+        [-1667301416]   = true,
+        [1885233650]    = true,
+        [-1044093321]   = true,
+        [587703123]     = true,
+        [-2109222095]   = true,
+        [-1342520604]   = true,
+        [349505262]     = true,
+        [-640198516]    = true,
+        [1581098148]    = true,
+        [368603149]     = true,
+    }
+
+    return {
+        name = "speedHack",
+
+        tick = function(self, ctx)
+            local ped    = ctx.ped()
+            local ragdoll = ctx.ragdoll()
+
+            if not ragdoll then
+                if not IsPedClimbing(ped) then
+                    if not IsPedShooting(ped) then
+                        if not IsPedJumping(ped) then
+                            if not IsEntityInWater(ped) then
+                                GetEntityVelocity(ped)
+                            end
+                        end
+                    end
+                end
+            end
+
+            if not ragdoll then
+                GetEntitySpeed(ped)
+                local model = GetEntityModel(ped)
+                if not pedModelWhitelist[model] then
+                    self.flags = (self.flags or 0) + 1
+                    if self.flags >= 3 then
+                        self.punish("Player was invisible")
+                    end
+                else
+                    self.flags = 0
+                end
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Lua Menu Detection
+-- ============================================================
+moduleRegistry["menuDetection"] = function()
+    local GetTextureResolution        = GetTextureResolution
+    local HasStreamedTextureDictLoaded = HasStreamedTextureDictLoaded
+
+    -- Known cheat menu texture dictionary/texture pairs
+    local knownMenuTextures = {
+        { txd = "John",              txt = "John2",              name = "SugarMenu" },
+        { txd = "darkside",          txt = "logo",               name = "Darkside" },
+        { txd = "ISMMENU",           txt = "ISMMENUHeader",      name = "ISMMENU" },
+        { txd = "dopatest",          txt = "duiTex",             name = "Copypaste Menu" },
+        { txd = "fm",                txt = "menu_bg",            name = "Fallout Menu" },
+        { txd = "wave",              txt = "logo",               name = "Wave" },
+        { txd = "wave1",             txt = "logo1",              name = "Wave (alt.)" },
+        { txd = "meow2",             txt = "woof2",              name = "Alokas66",  x = 1000, y = 1000 },
+        { txd = "hugev_gif_DSGUHSDGISDG", txt = "duiTex_DSIOGJSDG", name = "HugeV Menu" },
+        { txd = "MM",                txt = "menu_bg",            name = "Metrix Methods" },
+        { txd = "wm",                txt = "wm2",                name = "WM Menu" },
+        { txd = "NeekerMan",         txt = "NeekerMan1",         name = "Lumia Menu" },
+        { txd = "Blood-X",           txt = "Blood-X",            name = "Blood-X Menu" },
+        { txd = "Dopamine",          txt = "Dopameme",           name = "Dopamine Menu" },
+        { txd = "KekHack",           txt = "kekhack",            name = "KekHack Menu" },
+        { txd = "Maestro",           txt = "maestro",            name = "Maestro Menu" },
+        { txd = "SkidMenu",          txt = "skidmenu",           name = "Skid Menu" },
+        { txd = "Brutan",            txt = "brutan",             name = "Brutan Menu" },
+        { txd = "FiveSense",         txt = "fivesense",          name = "Fivesense Menu" },
+        { txd = "Auttaja",           txt = "auttaja",            name = "Auttaja Menu" },
+        { txd = "BartowMenu",        txt = "bartowmenu",         name = "Bartow Menu" },
+        { txd = "Hoax",              txt = "hoaxmenu",           name = "Hoax Menu" },
+        { txd = "FendinX",           txt = "fendin",             name = "Fendinx Menu" },
+        { txd = "Lynxmenu",          txt = "Lynx",               name = "Lynx Menu" },
+        { txd = "Oblivious",         txt = "oblivious",          name = "Oblivious Menu" },
+        { txd = "Hydramenu",         txt = "hydramenu",          name = "Hydra Menu" },
+        { txd = "HydroMenu",         txt = "HydroMenuHeader",    name = "Hydro Menu" },
+        { txd = "ALIEN MENU",        txt = "ALIEN MENU",         name = "Alien Menu" },
+        -- ... (full list from original)
+    }
+
+    -- Known cheat menu streamed texture dictionaries
+    local knownStreamedDicts = {
+        "rampage_tr_main",
+        "MenyooExtras",
+        "shopui_title_graphics_franklin",
+        "deadline",
+        "cockmenuuu",
+    }
+
+    return {
+        name = "menuDetection",
+
+        tick = function(self, ctx)
+            -- Check texture resolution for known cheat menus
+            for _, entry in ipairs(knownMenuTextures) do
+                if entry.x then
+                    local res = GetTextureResolution(entry.txd, entry.txt)
+                    if res and res.x == entry.x then
+                        self.punish("Lua Menu detected: " .. entry.name)
+                    end
+                else
+                    local res = GetTextureResolution(entry.txd, entry.txt)
+                    if res and res.x ~= 4.0 then
+                        self.punish("Lua Menu detected: " .. entry.name)
+                    end
+                end
+            end
+
+            -- Check streamed texture dictionaries
+            for _, dict in ipairs(knownStreamedDicts) do
+                if HasStreamedTextureDictLoaded(dict) then
+                    self.punish("Lua Menu detected, streamed texture dict: " .. dict)
+                end
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — On-Screen Text Detection
+-- ============================================================
+moduleRegistry["onScreenDetection"] = function()
+    local CreateThread   = Citizen.CreateThread
+    local Wait           = Wait
+    local SendNUIMessage = SendNUIMessage
+
+    return {
+        name = "onScreenDetection",
+
+        start = function(self, ctx)
+            -- Register NUI callback for keyword detection results
+            RegisterNuiCallback("screenKeywordDetected", function(data, cb)
+                cb({})
+                local isReady = ctx.isNuiReady()
+                if not isReady then return end
+                self.punish("Keyword: '" .. data.word .. "' detected")
+            end)
+
+            -- Request NUI to scan screen for blacklisted keywords
+            local keywords = {}
+            for k, _ in pairs(self.settings.blacklist) do
+                table.insert(keywords, k)
+            end
+
+            if ctx.isNuiReady() then
+                SendNUIMessage({ onScreenRequest = { enabled = true, keywords = keywords } })
+            else
+                CreateThread(function()
+                    while not ctx.isNuiReady() do Wait(100) end
+                    SendNUIMessage({ onScreenRequest = { enabled = true, keywords = keywords } })
+                end)
+            end
+        end,
+
+        stop = function(self, ctx)
+            SendNUIMessage({ onScreenDetection = false })
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Headshot God Mode Detection
+-- ============================================================
+moduleRegistry["headshot"] = function()
+    local GetPedConfigFlag = GetPedConfigFlag
+
+    return {
+        name = "headshot",
+
+        tick = function(self, ctx)
+            local ped = ctx.ped()
+            -- Config flag 2 = disable headshot damage
+            if GetPedConfigFlag(ped, 2, false) then
+                self.punish("Tried to disable Headshot")
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Blacklisted Task Detection
+-- ============================================================
+moduleRegistry["taskBlacklist"] = function()
+    local GetPedTaskTypeIndex = GetPedTaskTypeIndex
+    local ClearPedTasks       = ClearPedTasks
+    local ClearPedSecondaryTask = ClearPedSecondaryTask
+    local StopAnimTask        = StopAnimTask
+
+    -- Task indices that are blacklisted
+    local blacklistedTasks = { 101, 151, 221, 222 }
+
+    return {
+        name = "taskBlacklist",
+
+        tick = function(self, ctx)
+            local ped = ctx.ped()
+            for _, taskId in ipairs(blacklistedTasks) do
+                if GetPedTaskTypeIndex(ped, taskId) then
+                    ClearPedTasks(ped)
+                    ClearPedSecondaryTask(ped)
+                    StopAnimTask(ped)
+                    self.punish("Tried to play task " .. taskId)
+                end
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Pickup Blocking
+-- ============================================================
+moduleRegistry["pickupBlock"] = function()
+    local SetPedCanPickupObjects = SetPedCanPickupObjects
+    local SetPedCanPickupWeapons = SetPedCanPickupWeapons
+    local RemoveEventHandler     = RemoveEventHandler
+
+    -- Blacklisted pickup hashes (weapons, items)
+    local blacklistedPickups = {
+        1948018762, 1751145014, 1817941018, -744254618, 1426343849,
+        -107080240, -1541298894, -214137936, -546236071, -1296747938,
+        -- ... (full list from original)
+    }
+
+    return {
+        name = "pickupBlock",
+
+        start = function(self, ctx)
+            local player = ctx.player()
+
+            for _, hash in ipairs(blacklistedPickups) do
+                SetPedCanPickupObjects(player, hash, false)
+            end
+
+            self.pickupHandler1 = AddEventHandler("CEventNetworkPlayerCollectedPickup",         function() end)
+            self.pickupHandler2 = AddEventHandler("CEventNetworkPlayerCollectedAmbientPickup",   function() end)
+            self.pickupHandler3 = AddEventHandler("CEventNetworkPlayerCollectedPortablePickup",  function() end)
+        end,
+
+        stop = function(self, ctx)
+            local player = ctx.player()
+
+            if self.pickupHandler1 then RemoveEventHandler(self.pickupHandler1) self.pickupHandler1 = nil end
+            if self.pickupHandler2 then RemoveEventHandler(self.pickupHandler2) self.pickupHandler2 = nil end
+            if self.pickupHandler3 then RemoveEventHandler(self.pickupHandler3) self.pickupHandler3 = nil end
+
+            for _, hash in ipairs(blacklistedPickups) do
+                SetPedCanPickupObjects(player, hash, true)
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Vehicle Repair / Boost
+-- ============================================================
+moduleRegistry["vehicleTools"] = function()
+    local Wait                  = Wait
+    local GetVehiclePedIsIn     = GetVehiclePedIsIn
+    local SetVehicleFixed       = SetVehicleFixed
+    local SetVehicleDeformationFixed = SetVehicleDeformationFixed
+    local SetVehicleUndriveable = SetVehicleUndriveable
+    local SetVehicleEngineOn    = SetVehicleEngineOn
+    local SetVehicleDirtLevel   = SetVehicleDirtLevel
+    local WashDecalsFromVehicle = WashDecalsFromVehicle
+
+    -- Boostable vehicle class IDs
+    local boostableClasses = {
+        [0] = "Compacts", [1] = "Sedans", [2] = "SUVs", [3] = "Coupes",
+        [4] = "Muscle",   [5] = "Sports Classics", [6] = "Sports",
+        [7] = "Super",    [9] = "Off-road", [11] = "Utility",
+        [12] = "Vans",    [17] = "Service", [18] = "Emergency",
+        [19] = "Military", [20] = "Commercial", [22] = "Open Wheel",
+    }
+
+    RegisterNuiCallback("repairVehicle", function(data, cb)
+        local ped     = PlayerPedId()
+        local vehicle = GetVehiclePedIsIn(ped, false)
+        if vehicle then
+            SetVehicleFixed(vehicle, false)
+            SetVehicleDeformationFixed(vehicle)
+            SetVehicleUndriveable(vehicle, true, false, false)
+            SetVehicleDirtLevel(vehicle, 0.0)
+            WashDecalsFromVehicle(vehicle)
+            cb({ success = true, message = "Vehicle repaired" })
+        else
+            cb({ success = false, message = "You are not in a vehicle" })
+        end
+    end)
+
+    RegisterNuiCallback("loadModel", function(data, cb)
+        local hash = joaat(data.model)
+        RequestModel(hash)
+        while true do
+            if HasModelLoaded(hash) then break end
+            Wait(100)
+        end
+        cb(hash)
+    end)
+
+    RegisterNuiCallback("getVehicleClass", function(data, cb)
+        local ped     = PlayerPedId()
+        local vehicle = GetVehiclePedIsIn(ped, false)
+        cb(GetVehicleClass(vehicle))
+    end)
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Silent Aim Detection
+-- ============================================================
+moduleRegistry["silentAim"] = function()
+    local GetPedLastWeaponImpactCoord = GetPedLastWeaponImpactCoord
+    local GetScreenCoordFromWorldCoord = GetScreenCoordFromWorldCoord
+    local IsPlayerFreeAiming          = IsPlayerFreeAiming
+    local IsPedShooting               = IsPedShooting
+    local GetPedConfigFlag            = GetPedConfigFlag
+    local RemoveEventHandler          = RemoveEventHandler
+
+    local function isAiming(player, ped)
+        if not IsPlayerFreeAiming(player) then return false end
+        if IsPedShooting(ped)             then return true  end
+        if not GetPedConfigFlag(ped, 78, true) then return false end
+        if IsScriptGlobalShaking()         then return true  end
+        if IsGameplayCamShaking()          then return true  end
+        return false
+    end
+
+    return {
+        name = "silentAim",
+
+        start = function(self, ctx)
+            self.gunshotHandler = AddEventHandler("CEventGunShotBulletImpact", function(shooter, target)
+                local ped = PlayerPedId()
+                if shooter ~= ped then return end
+
+                local hasImpact, impactCoord = GetPedLastWeaponImpactCoord(ped)
+                if hasImpact then
+                    -- Impact on screen check
+                    local onScreen, sx, sy = GetScreenCoordFromWorldCoord(impactCoord.x, impactCoord.y, impactCoord.z)
+                    if not onScreen then
+                        if isAiming(PlayerId(), ped) then
+                            self.flags = (self.flags or 0) + 1
+                            if self.flags > 7 then
+                                self.punish("Tried to use silent aim (2)")
+                            end
+                        end
+                    end
+
+                    -- Impact far from crosshair
+                    if math.abs(0.5 - sy) > 0.15 then
+                        if isAiming(PlayerId(), ped) then
+                            self.flags = (self.flags or 0) + 1
+                            if self.flags > 10 then
+                                self.punish("Tried to use silent aim (3)")
+                            end
+                        end
+                    end
+                end
+            end)
+        end,
+
+        stop = function(self, ctx)
+            if self.gunshotHandler then
+                RemoveEventHandler(self.gunshotHandler)
+                self.gunshotHandler = nil
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Time Stop Detection
+-- ============================================================
+moduleRegistry["timeStop"] = function()
+    local GetGameTimer = GetGameTimer
+
+    return {
+        name = "timeStop",
+
+        tick = function(self, ctx)
+            local time = GetGameTimer()
+            if self.oldTime then
+                if time <= self.oldTime then
+                    self.punish("Tried to stop the anticheat (1)")
+                end
+            end
+            self.oldTime = time
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Weapon Spoof Detection
+-- ============================================================
+moduleRegistry["weaponSpoof"] = function()
+    local GetSelectedPedWeapon = GetSelectedPedWeapon
+    local GetPedTaskTypeIndex  = GetPedTaskTypeIndex
+    local GetVehiclePedIsIn    = GetVehiclePedIsIn
+    local IsPlayerFreeAiming   = IsPlayerFreeAiming
+    local IsPedShooting        = IsPedShooting
+    local RemoveEventHandler   = RemoveEventHandler
+
+    return {
+        name = "weaponSpoof",
+
+        start = function(self, ctx)
+            -- Entity damage event: check weapon spoofing
+            self.damagedHandler = AddEventHandler("entityDamaged", function(victim, attacker, weapon)
+                if not attacker then return end
+                if victim == attacker then return end
+                local myPed = PlayerPedId()
+                if attacker ~= myPed then return end
+
+                local hasWeapon = HasPedGotWeapon(myPed, weapon, false)
+                if not hasWeapon then
+                    if self.settings.whitelist and not self.settings.whitelist[weapon] then
+                        self.punish("Tried to spoof weapon: " .. weapon)
+                    end
+                end
+            end)
+
+            -- GunShot event: check various spoofing scenarios
+            self.gunshotHandler = AddEventHandler("CEventGunShot", function(shooter)
+                local myPed = PlayerPedId()
+                if shooter ~= myPed then return end
+
+                local weapon    = GetSelectedPedWeapon(myPed)
+                local inVehicle = GetVehiclePedIsIn(myPed, false)
+                local isAiming  = IsPlayerFreeAiming(PlayerId())
+
+                -- Unarmed weapon spoof check
+                if GetSelectedPedWeapon(myPed) == -1569615261 then
+                    if not GetVehiclePedIsIn(myPed, false) then
+                        GetEntityVelocity(myPed)
+                    end
+                    self.unarmedFlags = (self.unarmedFlags or 0) + 1
+                    if self.unarmedFlags >= 10 then
+                        self.punish("Tried to spoof unarmed weapon")
+                        self.unarmedFlags = 0
+                    end
+                else
+                    self.unarmedFlags = 0
+                end
+
+                -- Safe zone weapon spoof check
+                if not GetPedTaskTypeIndex(myPed, 7) then
+                    if not IsPedInAnyVehicle(myPed, true) then
+                        self.safeFlags = (self.safeFlags or 0) + 1
+                        if self.safeFlags >= 5 then
+                            self.punish("Tried to spoof safe weapon")
+                            self.safeFlags = 0
+                        end
+                    else
+                        self.safeFlags = 0
+                    end
+                end
+
+                -- Shooting spoof check
+                if not IsPedShooting(myPed) then
+                    if not GetVehiclePedIsIn(myPed, false) then
+                        if not GetEntityVelocity(myPed) then
+                            if not IsPlayerFreeAiming(PlayerId()) then end
+                        end
+                    end
+                    self.shootingFlags = (self.shootingFlags or 0) + 1
+                    if self.shootingFlags >= 8 then
+                        self.punish("Tried to spoof shooting")
+                        self.shootingFlags = 0
+                    end
+                else
+                    self.shootingFlags = 0
+                end
+            end)
+        end,
+
+        stop = function(self, ctx)
+            if self.damagedHandler then RemoveEventHandler(self.damagedHandler) self.damagedHandler = nil end
+            if self.taserHandler    then RemoveEventHandler(self.taserHandler)   self.taserHandler   = nil end
+            if self.gunshotHandler  then RemoveEventHandler(self.gunshotHandler) self.gunshotHandler = nil end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Identifier Spoof Detection
+-- ============================================================
+moduleRegistry["identifierSpoof"] = function()
+    local Wait              = Wait
+    local TriggerServerEvent = TriggerServerEvent
+    local GetResourceKvpString = GetResourceKvpString
+    local SetResourceKvp    = SetResourceKvp
+
+    RegisterNetEvent("identifierCheck", function(data)
+        while not data do Wait(0) end
+
+        local identifiers = data.identifiers
+        local changed = {}
+
+        for key, value in pairs(identifiers) do
+            if key ~= "ip" then
+                local stored = GetResourceKvpString("yNgkiN8p13m2js0Kaqk7" .. key)
+                if stored and stored ~= value then
+                    changed[key] = stored
+                end
+                SetResourceKvp("yNgkiN8p13m2js0Kaqk7" .. key, value)
+            end
+        end
+
+        if next(changed) then
+            TriggerServerEvent("o-X4XP0a5UHmj02djA0iqwpaDB-QQYCRuN1DyTY", changed)
+        end
+    end)
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — NUI Blocker Detection
+-- ============================================================
+moduleRegistry["nuiBlocker"] = function()
+    local nuiBlocked  = false
+    local nuiNotReady = false
+
+    RegisterNuiCallback("nuiBlockerCheck", function(data, cb)
+        cb({})
+        if nuiBlocked then
+            data.mod.punish("Tried to block NUI (antiSpoofer evasion)")
+        end
+        if nuiNotReady then
+            data.mod.punish("Tried to prevent NUI from loading")
+        end
+    end)
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Beast Jump Detection
+-- ============================================================
+moduleRegistry["beastJump"] = function()
+    local IsPedPerformingAbility = IsPedPerformingAbility
+
+    return {
+        name = "beastJump",
+
+        tick = function(self, ctx)
+            local ped = ctx.ped()
+            if IsPedPerformingAbility(ped) then
+                self.punish("Tried to use beast jump")
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Lua Injector Detection (Parazetamol)
+-- ============================================================
+moduleRegistry["luaInjector"] = function()
+    local GetAllObjects  = GetAllObjects
+    local DeleteEntity   = DeleteEntity
+    local SetEntityCoords = SetEntityCoords
+    local GetEntityCoords = GetEntityCoords
+    local NetworkGetNetworkIdFromEntity = NetworkGetNetworkIdFromEntity
+    local StateBagSetValue = StateBagSetValue
+
+    return {
+        name = "luaInjector",
+
+        tick = function(self, ctx)
+            local player = ctx.player()
+
+            -- Check if GetAllObjects returns nil (sign of injector hook)
+            local result = GetAllObjects()
+            if result == nil then
+                self.punish("Lua Injector detected: Parazetamol")
+            end
+
+            -- Scan CVehicle pool for suspicious entities
+            for _, vehicle in pairs(GetGamePool("CVehicle")) do
+                local netId  = NetworkGetNetworkIdFromEntity(vehicle)
+                local owner  = NetworkGetEntityOwner(vehicle)
+                if owner and netId then
+                    local coords = GetEntityCoords(vehicle)
+                    StateBagSetValue("Ae7PQ-EzQ0s-83F2a", netId, player)
+                end
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Invisibility Detection
+-- ============================================================
+moduleRegistry["invisibility"] = function()
+    local GetEntityAlpha   = GetEntityAlpha
+    local ResetEntityAlpha = ResetEntityAlpha
+    local GetEntityModel   = GetEntityModel
+    local NetworkGetEntityIsNetworked = NetworkGetEntityIsNetworked
+
+    return {
+        name = "invisibility",
+
+        tick = function(self, ctx)
+            local ped = ctx.ped()
+
+            local isInVehicle = GetVehiclePedIsIn(ped, false) ~= 0
+            if isInVehicle then return end
+
+            ResetEntityAlpha(ped)
+            local alpha = GetEntityAlpha(ped)
+            local model = GetEntityModel(ped)
+
+            if alpha then
+                return
+            else
+                self.flags = (self.flags or 0) + 1
+                if self.flags >= 3 then
+                    self.punish("Player was invisible")
+                end
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Ped Model Whitelist Check
+-- ============================================================
+moduleRegistry["pedModelCheck"] = function()
+    local GetEntityModel  = GetEntityModel
+    local GetPedConfigFlag = GetPedConfigFlag
+
+    return {
+        name = "pedModelCheck",
+
+        tick = function(self, ctx)
+            local ped   = ctx.ped()
+            local model = GetEntityModel(ped)
+
+            if not self.settings.whitelist[model] then
+                getModule("punish").model(model)
+                return
+            else
+                if GetPedConfigFlag(ped, 223, true) then
+                    return
+                end
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Vehicle Plate Spoof Detection
+-- ============================================================
+moduleRegistry["plateSpoof"] = function()
+    local GetVehicleNumberPlateText = GetVehicleNumberPlateText
+    local VehToNet = VehToNet
+
+    local whitelistedPlates = {}
+
+    -- Receives whitelisted plates from server
+    RegisterNuiCallback("10V6YK1vXHBO", function(data, cb)
+        whitelistedPlates[data] = true
+        cb({})
+    end)
+
+    return {
+        name = "plateSpoof",
+
+        tick = function(self, ctx)
+            local vehicle = ctx.vehicle()
+            if vehicle == 0 then return end
+
+            local plate = GetVehicleNumberPlateText(vehicle)
+            if not plate then return end
+
+            if not self.plates[vehicle] then
+                self.plates[vehicle] = plate
+                return
+            end
+
+            if self.plates[vehicle] == plate then return end
+
+            if whitelistedPlates[plate] then return end
+
+            -- Plate changed — report
+            local netId = VehToNet(vehicle)
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Weapon Blacklist (Server-side sync)
+-- ============================================================
+moduleRegistry["weaponBlacklist"] = function()
+    local RemoveWeaponFromPed = RemoveWeaponFromPed
+    local GetWeaponName       = GetWeaponName
+
+    return {
+        name = "weaponBlacklist",
+
+        start = function(self, ctx)
+            self.handler = AddEventHandler("idZXuF4gT4N9wihfDQoiKsTgWpQUZPhXnE8WqplLk", function(weapon)
+                local name = GetWeaponName(weapon)
+                if name then
+                    if self.settings.whitelist[name] then return end
+                    RemoveWeaponFromPed(PlayerPedId(), weapon)
+                end
+            end)
+        end,
+
+        stop = function(self, ctx)
+            if self.handler then
+                RemoveEventHandler(self.handler)
+                self.handler = nil
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Voice Proximity Check
+-- ============================================================
+moduleRegistry["voiceProximity"] = function()
+    local MumbleGetVoiceChannelFromServerId = MumbleGetVoiceChannelFromServerId
+    local RemoveEventHandler = RemoveEventHandler
+
+    return {
+        name = "voiceProximity",
+
+        start = function(self, ctx)
+            self.handler = AddEventHandler("mumbleConnected", function()
+                self.connected = true
+            end)
+        end,
+
+        tick = function(self, ctx)
+            if not self.connected then return end
+
+            ctx.player()
+            local voiceRange = MumbleGetVoiceChannelFromServerId(0)
+
+            if not self.baseline then
+                self.baseline = voiceRange
+            end
+
+            if voiceRange > self.baseline then
+                if voiceRange >= self.settings.max then
+                    self.punish("Used global voice")
+                end
+            end
+        end,
+
+        stop = function(self, ctx)
+            if self.handler then
+                RemoveEventHandler(self.handler)
+                self.handler = nil
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Anti-Cheat — Overlay / Crosshair Scale Detection
+-- ============================================================
+moduleRegistry["overlayCheck"] = function()
+    local GetControlNormal     = GetControlNormal
+    local SetCursorSprite      = SetCursorSprite
+    local GetDisabledControlNormal = GetDisabledControlNormal
+    local IsPlayerFreeAiming   = IsPlayerFreeAiming
+    local IsDisabledControlPressed = IsDisabledControlPressed
+
+    return {
+        name = "overlayCheck",
+
+        tick = function(self, ctx)
+            local health = GetEntityHealth(PlayerPedId())
+            local inVehicle = GetVehiclePedIsIn(PlayerPedId(), false)
+            local isAiming  = not GetFollowPedCamViewMode()
+
+            if not isAiming then
+                if not self.locked then
+                    self.locked = true
+                end
+                SetCursorSprite(0, 0)
+            else
+                if self.locked then
+                    SetCursorSprite(0.5, 0.5)
+                    self.locked = false
+                    self.ticks  = 0
+
+                    if health < 300 then
+                        self.checkingOverlay = true
+                    end
+                else
+                    if self.checkingOverlay then
+                        local resX, texX = GetScreenResolution()
+                        local resY, texY = GetActiveScreenResolution()
+
+                        if texX > 0 then
+                            SetCursorSprite(1.0, 1.0)
+                            SetCursorActiveTimestamp(0)
+
+                            local curX, _ = GetScreenResolution()
+                            if curX == resX - 1 then
+                                self.flags = (self.flags or 0) + 1
+                            else
+                                self.flags = 0
+                                self.checkingOverlay = false
+                            end
+
+                            SetCursorSprite(texX / resX, texY / resY)
+                        else
+                            self.checkingOverlay = false
+                        end
+                    end
+                end
+            end
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Punish — Report & Action Player
+-- ============================================================
+moduleRegistry["punish"] = function()
+    local TriggerServerEvent = TriggerServerEvent
+    local LocalPlayer        = LocalPlayer
+
+    local flaggedModules = {}
+
+    return {
+        -- Called when a module detects a cheat
+        report = function(self, moduleName, details)
+            if flaggedModules[moduleName] then return end
+
+            local adminInfo = getModule("api").getLocalAdminInfo()
+            if adminInfo.permissions.whitelisted then return end
+
+            flaggedModules[moduleName] = true
+
+            local payload = {
+                encodeString(moduleName, "moduleName:55925"),
+                encodeString(details,    "details:55925"),
+            }
+
+            LocalPlayer.state:set(LocalPlayer.state, payload, true)
+            TriggerServerEvent("ElectronAC:punish", payload)
+        end,
+
+        model = function(modelHash)
+            -- Report blacklisted ped model
+            TriggerServerEvent("ElectronAC:reportModel", modelHash)
+        end,
+    }
+end
+
+-- ============================================================
+-- MODULE: Context Factory (per-tick game state cache)
+-- ============================================================
+moduleRegistry["context"] = function()
+    local PlayerPedId        = PlayerPedId
+    local GetVehiclePedIsIn  = GetVehiclePedIsIn
+    local GetEntityCoords    = GetEntityCoords
+    local GetSelectedPedWeapon = GetSelectedPedWeapon
+    local GetGameTimer       = GetGameTimer
+    local IsPedRagdoll       = IsPedRagdoll
+
+    return function()
+        local cache = {}
+
+        return {
+            ped = function()
+                if not cache.ped then cache.ped = PlayerPedId() end
+                return cache.ped
+            end,
+            vehicle = function()
+                if not cache.vehicle then
+                    cache.vehicle = GetVehiclePedIsIn(cache.ped or PlayerPedId(), false)
+                end
+                return cache.vehicle
+            end,
+            pos = function()
+                if not cache.pos then
+                    cache.pos = GetEntityCoords(cache.ped or PlayerPedId())
+                end
+                return cache.pos
+            end,
+            weapon = function()
+                if not cache.weapon then
+                    cache.weapon = GetSelectedPedWeapon(cache.ped or PlayerPedId())
+                end
+                return cache.weapon
+            end,
+            timer = function()
+                if not cache.timer then cache.timer = GetGameTimer() end
+                return cache.timer
+            end,
+            ragdoll = function()
+                if not cache.ragdoll then
+                    cache.ragdoll = IsPedRagdoll(cache.ped or PlayerPedId())
+                end
+                return cache.ragdoll
+            end,
+            player = function()
+                return PlayerId()
+            end,
+        }
+    end
+end
+
+-- ============================================================
+-- MODULE: Module Runner
+-- ============================================================
+moduleRegistry["runner"] = function()
+    local CreateThread = Citizen.CreateThread
+    local Wait         = Wait
+    local pcall        = pcall
+
+    local modules = {}
+
+    local function registerModule(name, mod)
+        mod.punish = function(reason)
+            getModule("punish"):report(name, reason)
+        end
+        mod.name = name
+        table.insert(modules, mod)
+    end
+
+    local function startModules(settings)
+        for _, mod in ipairs(modules) do
+            mod.settings = settings.modules[mod.name] or {}
+            if mod.start then
+                local ok, err = pcall(mod.start, mod, getModule("context")())
+                if not ok then
+                    getModule("api").logClientError(err, mod.name)
+                end
+            end
+            mod.running = true
+        end
+    end
+
+    local function runTickModules()
+        local ctx = getModule("context")()
+        for _, mod in ipairs(modules) do
+            if mod.running and mod.tick then
+                local ok, err = pcall(mod.tick, mod, ctx)
+                if not ok then
+                    getModule("api").logClientError(err, mod.name)
+                end
+            end
+        end
+    end
+
+    local function stopModules()
+        local ctx = getModule("context")()
+        for _, mod in ipairs(modules) do
+            if mod.running then
+                mod.running = false
+                if mod.stop then
+                    local ok, err = pcall(mod.stop, mod, ctx)
+                    if not ok then
+                        getModule("api").logClientError(err, mod.name)
+                    end
+                end
+            end
+        end
+    end
+
+    -- Register all detection modules
+    registerModule("aimbot",          getModule("aimbot"))
+    registerModule("infiniteAmmo",    getModule("infiniteAmmo"))
+    registerModule("animBlacklist",   getModule("animBlacklist"))
+    registerModule("armorHack",       getModule("armorHack"))
+    registerModule("antiCrash",       getModule("antiCrash"))
+    registerModule("weaponComponents",getModule("weaponComponents"))
+    registerModule("fireRate",        getModule("fireRate"))
+    registerModule("explosiveWeapons",getModule("explosiveWeapons"))
+    registerModule("noclip",          getModule("noclip"))
+    registerModule("teleport",        getModule("teleport"))
+    registerModule("healthHack",      getModule("healthHack"))
+    registerModule("spectate",        getModule("spectate"))
+    registerModule("speedHack",       getModule("speedHack"))
+    registerModule("menuDetection",   getModule("menuDetection"))
+    registerModule("onScreenDetection",getModule("onScreenDetection"))
+    registerModule("headshot",        getModule("headshot"))
+    registerModule("taskBlacklist",   getModule("taskBlacklist"))
+    registerModule("pickupBlock",     getModule("pickupBlock"))
+    registerModule("beastJump",       getModule("beastJump"))
+    registerModule("luaInjector",     getModule("luaInjector"))
+    registerModule("invisibility",    getModule("invisibility"))
+    registerModule("pedModelCheck",   getModule("pedModelCheck"))
+    registerModule("plateSpoof",      getModule("plateSpoof"))
+    registerModule("weaponBlacklist", getModule("weaponBlacklist"))
+    registerModule("voiceProximity",  getModule("voiceProximity"))
+    registerModule("silentAim",       getModule("silentAim"))
+    registerModule("timeStop",        getModule("timeStop"))
+    registerModule("weaponSpoof",     getModule("weaponSpoof"))
+    registerModule("overlayCheck",    getModule("overlayCheck"))
+
+    -- Listen for server settings push
+    RegisterNetEvent("VUwmG3ku78YB7hyHg", function(settings)
+        stopModules()
+        if settings then
+            startModules(settings)
+        end
+        -- Start tick loop
+        CreateThread(function()
+            while true do
+                runTickModules()
+                Wait(0)
+            end
+        end)
+    end)
+
+    -- Cleanup on resource stop
+    AddEventHandler("onResourceStop", function(resourceName)
+        if resourceName == GetCurrentResourceName() then
+            stopModules()
+        end
+    end)
+end
+
+-- ============================================================
+-- Bootstrap
+-- ============================================================
+getModule("core")
+getModule("runner")
