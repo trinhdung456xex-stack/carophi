@@ -1,129 +1,146 @@
--- [[ DUG HUB V3 - BYPASS FAST ATTACK & AUTO QUEST ]] --
+-- [[ DUG HUB V4 - REDZ HUB STYLE ]] --
 
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-local LocalPlayer = Players.LocalPlayer
+local RS = game:GetService("ReplicatedStorage")
+local TS = game:GetService("TweenService")
+local LP = Players.LocalPlayer
 
-_G.AutoFarm = false
-_G.FastAttack = false -- Bản V3 sẽ đánh cực nhanh
+-- Khởi tạo biến trạng thái
+_G.Config = {
+    AutoFarm = false,
+    FastAttack = false,
+    BringMob = false,
+    Distance = 10
+}
 
--- 1. HÀM BAY (TWEEN) - Giúp bay xuyên vật thể không bị kẹt
-local function TweenTo(targetCFrame)
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-    
-    local distance = (char.HumanoidRootPart.Position - targetCFrame.p).Magnitude
-    local speed = 300 -- Tốc độ bay (điều chỉnh nếu muốn nhanh hơn)
-    local info = TweenInfo.new(distance / speed, Enum.EasingStyle.Linear)
-    
-    local tween = TweenService:Create(char.HumanoidRootPart, info, {CFrame = targetCFrame})
+-- 1. HỆ THỐNG FAST ATTACK (BYPASS ANIMATION)
+local CombatFramework = require(RS:WaitForChild("CombatFramework"))
+local CombatFrameworkLib = debug.getupvalues(CombatFramework)[2]
+
+local function GetCurrentBlade()
+    return CombatFrameworkLib.activeController.blades[1]
+end
+
+local function Attack()
+    local ac = CombatFrameworkLib.activeController
+    if ac and ac.equipped then
+        for i = 1, 3 do -- Spam 3 lần mỗi nhịp để tăng tốc
+            ac.hitboxStats.hitboxResonance = 64
+            ac:attack()
+        end
+    end
+end
+
+-- 2. HÀM DI CHUYỂN TWEEN
+local function TweenTo(target)
+    if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return end
+    local dist = (LP.Character.HumanoidRootPart.Position - target.p).Magnitude
+    local info = TweenInfo.new(dist / 300, Enum.EasingStyle.Linear)
+    local tween = TS:Create(LP.Character.HumanoidRootPart, info, {CFrame = target})
     tween:Play()
     return tween
 end
 
--- 2. BYPASS FAST ATTACK (Spam Remote)
--- Lưu ý: Đánh quá nhanh có thể gây lag hoặc kick nếu Server check kỹ
-task.spawn(function()
-    while task.wait() do
-        if _G.FastAttack then
-            pcall(function()
-                -- Thay đổi "Combat" thành tên tool bạn đang cầm
-                local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                if tool then
-                    -- Gửi tín hiệu đánh trực tiếp tới Server (Bypass Animation)
-                    ReplicatedStorage.Remotes.Validator:FireServer(math.huge) -- Một số bản cần validator
-                    ReplicatedStorage.Remotes.CommF_:InvokeServer("Attack", tool) 
-                end
-            end)
-        end
-    end
-end)
+-- 3. GIAO DIỆN STYLE REDZ HUB
+local Screen = Instance.new("ScreenGui", CoreGui)
+Screen.Name = "DugHubV4"
 
--- 3. GIAO DIỆN V3 (Gọn gàng hơn)
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "DugHubV3"
-ScreenGui.Parent = CoreGui
-
-local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 250, 0, 300)
-Main.Position = UDim2.new(0.5, -125, 0.5, -150)
-Main.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+local Main = Instance.new("Frame", Screen)
+Main.Size = UDim2.new(0, 500, 0, 300)
+Main.Position = UDim2.new(0.5, -250, 0.5, -150)
+Main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 Main.BorderSizePixel = 0
-Main.Visible = true
 Main.Active = true
-Main.Draggable = true -- Có thể cầm kéo đi được
-Main.Parent = ScreenGui
+Main.Draggable = true
 
-local Corner = Instance.new("UICorner")
-Corner.Parent = Main
+local UICorner = Instance.new("UICorner", Main)
+UICorner.CornerRadius = UDim.new(0, 10)
 
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 40)
-Title.Text = "DUG HUB V3"
-Title.TextColor3 = Color3.fromRGB(0, 255, 128)
-Title.BackgroundTransparency = 1
-Title.Font = Enum.Font.Code
+-- Sidebar (Thanh bên trái)
+local Sidebar = Instance.new("Frame", Main)
+Sidebar.Size = UDim2.new(0, 120, 1, 0)
+Sidebar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Sidebar.BorderSizePixel = 0
+
+local SideCorner = Instance.new("UICorner", Sidebar)
+
+-- Title
+local Title = Instance.new("TextLabel", Sidebar)
+Title.Size = UDim2.new(1, 0, 0, 50)
+Title.Text = "DUG SHOP"
+Title.TextColor3 = Color3.fromRGB(0, 255, 150)
+Title.Font = Enum.Font.GothamBold
 Title.TextSize = 18
-Title.Parent = Main
+Title.BackgroundTransparency = 1
 
--- Nút Bật/Tắt chính
-local function CreateToggle(name, pos, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.8, 0, 0, 40)
-    btn.Position = UDim2.new(0.1, 0, 0, pos)
-    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-    btn.Text = name .. ": OFF"
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.GothamBold
-    btn.Parent = Main
+-- Khu vực chứa nút (Tabs)
+local Container = Instance.new("Frame", Main)
+Container.Position = UDim2.new(0, 130, 0, 10)
+Container.Size = UDim2.new(1, -140, 1, -20)
+Container.BackgroundTransparency = 1
+
+local UIList = Instance.new("UIListLayout", Container)
+UIList.Padding = UDim.new(0, 8)
+
+-- Hàm tạo Switch (Bật/Tắt) chuyên nghiệp
+local function CreateSwitch(text, config_key)
+    local btn = Instance.new("TextButton", Container)
+    btn.Size = UDim2.new(1, 0, 0, 40)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    btn.Text = "  " .. text
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Font = Enum.Font.GothamSemibold
     
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, 8)
-    c.Parent = btn
+    local c = Instance.new("UICorner", btn)
+    
+    local Status = Instance.new("Frame", btn)
+    Status.Size = UDim2.new(0, 10, 0, 10)
+    Status.Position = UDim2.new(1, -25, 0.5, -5)
+    Status.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    Instance.new("UICorner", Status).CornerRadius = UDim.new(1, 0)
 
-    local state = false
     btn.MouseButton1Click:Connect(function()
-        state = not state
-        btn.Text = name .. (state and ": ON" or ": OFF")
-        btn.TextColor3 = state and Color3.fromRGB(0, 255, 128) or Color3.fromRGB(255, 255, 255)
-        callback(state)
+        _G.Config[config_key] = not _G.Config[config_key]
+        TS:Create(Status, TweenInfo.new(0.3), {
+            BackgroundColor3 = _G.Config[config_key] and Color3.fromRGB(0, 255, 150) or Color3.fromRGB(255, 50, 50)
+        }):Play()
     end)
 end
 
--- 4. LOGIC AUTO FARM LEVEL (NHẬN QUEST -> BAY -> ĐÁNH)
-CreateToggle("Auto Farm Level", 60, function(v)
-    _G.AutoFarm = v
-    _G.FastAttack = v
-end)
+-- Tạo các chức năng
+CreateSwitch("Auto Farm Level", "AutoFarm")
+CreateSwitch("Fast Attack (Bypass)", "FastAttack")
+CreateSwitch("Gom Quái (Bring Mob)", "BringMob")
 
+-- 4. VÒNG LẶP XỬ LÝ (CORE LOGIC)
 task.spawn(function()
-    while task.wait(0.5) do
-        if _G.AutoFarm then
+    while task.wait() do
+        -- Fast Attack Logic
+        if _G.Config.FastAttack then
+            pcall(Attack)
+        end
+        
+        -- Auto Farm & Bring Mob
+        if _G.Config.AutoFarm then
             pcall(function()
-                -- Bước 1: Check xem có nhiệm vụ chưa
-                if not LocalPlayer.PlayerGui.Main:FindFirstChild("Quest") or LocalPlayer.PlayerGui.Main.Quest.Visible == false then
-                    -- Bay đến NPC nhận Quest (Ví dụ cho đảo đầu, bạn cần script thêm ID Quest cho từng đảo)
-                    -- CommF_:InvokeServer("StartQuest", "QuestName", 1)
-                    print("Đang đi nhận nhiệm vụ...")
-                else
-                    -- Bước 2: Có quest rồi thì tìm quái
-                    for _, enemy in pairs(workspace.Enemies:GetChildren()) do
-                        if enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
-                            -- Bay lên đầu quái (cách 10 unit cho vừa tầm đánh)
-                            local targetPos = enemy.HumanoidRootPart.CFrame * CFrame.new(0, 10, 0)
-                            TweenTo(targetPos)
-                            
-                            -- Gom quái xung quanh vào vị trí đó
-                            for _, e in pairs(workspace.Enemies:GetChildren()) do
-                                if (e.HumanoidRootPart.Position - enemy.HumanoidRootPart.Position).Magnitude < 100 then
-                                    e.HumanoidRootPart.CFrame = enemy.HumanoidRootPart.CFrame
-                                    e.HumanoidRootPart.CanCollide = false
+                for _, v in pairs(workspace.Enemies:GetChildren()) do
+                    if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+                        -- Bay lên đầu quái
+                        local targetPos = v.HumanoidRootPart.CFrame * CFrame.new(0, _G.Config.Distance, 0)
+                        TweenTo(targetPos)
+                        
+                        -- Gom quái
+                        if _G.Config.BringMob then
+                            for _, m in pairs(workspace.Enemies:GetChildren()) do
+                                if (m.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude < 150 then
+                                    m.HumanoidRootPart.CFrame = v.HumanoidRootPart.CFrame
+                                    m.HumanoidRootPart.CanCollide = false
                                 end
                             end
-                            break -- Tập trung đánh 1 mục tiêu/nhóm mục tiêu
                         end
+                        break
                     end
                 end
             end)
@@ -131,11 +148,4 @@ task.spawn(function()
     end
 end)
 
--- Phím tắt ẩn hiện GUI (Nhấn L)
-game:GetService("UserInputService").InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.L then
-        Main.Visible = not Main.Visible
-    end
-end)
-
-print("Dug Hub V3 Loaded! Speed Bypass Active.")
+print("Dug Hub V4 Loaded - Redz Style UI!")
